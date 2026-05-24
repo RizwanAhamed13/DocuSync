@@ -3,7 +3,7 @@ import os
 import chromadb
 from sentence_transformers import SentenceTransformer
 
-EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", "BAAI/bge-base-en-v1.5")
 
 _embedding_model: SentenceTransformer | None = None
 _chroma_client = None

@@ -2,7 +2,7 @@ import json
 import re
 import sqlite3
 
-from embeddings import get_chroma_collection, get_embedding_model
+from embeddings import EMBEDDING_MODEL_NAME, get_chroma_collection, get_embedding_model
 from indexer import get_db_connection
 
 
@@ -75,8 +75,15 @@ def hybrid_search(query_text: str, limit: int = 5) -> list[dict]:
         return []
 
     n_results = min(40, total_chunks)
+    # BGE models are instruction-tuned: queries need this prefix for best retrieval.
+    # Passage embeddings (stored at index time) are encoded without the prefix.
+    query_for_embed = (
+        f"Represent this sentence for searching relevant passages: {query_text}"
+        if "bge" in EMBEDDING_MODEL_NAME.lower()
+        else query_text
+    )
     vector_results = collection.query(
-        query_embeddings=[model.encode(query_text).tolist()],
+        query_embeddings=[model.encode(query_for_embed).tolist()],
         n_results=n_results,
     )
 
