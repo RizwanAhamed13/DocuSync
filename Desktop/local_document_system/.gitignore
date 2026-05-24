@@ -1,0 +1,27 @@
+# Runtime data — never commit user uploads, vector DB, or SQLite file
+uploads/
+vector_store/
+document_metadata.db
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Env vars
+.env
+.env.*
