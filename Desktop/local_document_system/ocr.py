@@ -1,40 +1,48 @@
-import os
-from typing import Optional
+import io
+import numpy as np
+from PIL import Image
 
-# Try to import PaddleOCR; if unavailable, fall back to Tesseract
+# ── PaddleOCR v3 (preferred) → Tesseract (fallback) ───────────────────────────
+# PaddleOCR v3 broke the v2 API:
+#   - __init__: no lang/use_gpu/show_log kwargs
+#   - input:    numpy.ndarray or file path — NOT raw bytes
+#   - output:   result[0].rec_texts  (list of text lines)
 try:
-    from paddleocr import PaddleOCR
-    # Initialize PaddleOCR engine (English model, CPU mode). Adjust parameters as needed.
-    _ocr_engine = PaddleOCR(lang='en', use_gpu=False, show_log=False)
+    from paddleocr import PaddleOCR as _PaddleOCR
+    _ocr_engine = _PaddleOCR()          # uses PP-OCRv5_server by default
     _using_paddle = True
-except Exception as import_err:
-    print(f"PaddleOCR import failed ({import_err}); falling back to Tesseract.")
+except Exception as _import_err:
+    print(f"PaddleOCR import failed ({_import_err}); falling back to Tesseract.")
     _using_paddle = False
     import pytesseract
-    from PIL import Image
-    import io
+
+
+def _bytes_to_numpy(image_bytes: bytes) -> np.ndarray:
+    """Convert raw image bytes → RGB numpy array for PaddleOCR."""
+    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    return np.array(img)
+
 
 def ocr_image_bytes(image_bytes: bytes) -> str:
     """Run OCR on raw image bytes.
 
-    Returns the extracted text (empty string on failure).
-    Uses PaddleOCR if available, otherwise Tesseract.
+    Returns extracted text (empty string on failure).
+    Primary: PaddleOCR v3 (PP-OCRv5_server).
+    Fallback: Tesseract 5.
     """
     if _using_paddle:
         try:
-            # PaddleOCR expects image bytes; it returns a list of results per page.
-            result = _ocr_engine.ocr(image_bytes, cls=False)
-            # result[0] is a list of lines; each line: [bbox, (text, confidence)]
-            if result and isinstance(result, list) and len(result) > 0:
-                lines = result[0]
-                text = "\n".join(line[1][0] for line in lines if line and isinstance(line, list) and len(line) > 1)
-                return text.strip()
+            img_np = _bytes_to_numpy(image_bytes)
+            results = _ocr_engine.predict(img_np)
+            if results:
+                # rec_texts is a flat list of recognised line strings
+                lines = results[0].rec_texts or []
+                return "\n".join(lines).strip()
             return ""
         except Exception as e:
             print(f"PaddleOCR image OCR error: {e}")
             return ""
     else:
-        # Tesseract fallback – retain original behaviour
         try:
             img = Image.open(io.BytesIO(image_bytes))
             return pytesseract.image_to_string(img).strip()
@@ -42,11 +50,9 @@ def ocr_image_bytes(image_bytes: bytes) -> str:
             print(f"Tesseract fallback OCR error: {e}")
             return ""
 
-def ocr_pdf_page(page, dpi: int = 150) -> str:
-    """Render a PDF page to an image (PNG) and run OCR.
 
-    Utilises the same OCR backend as `ocr_image_bytes`.
-    """
+def ocr_pdf_page(page, dpi: int = 150) -> str:
+    """Render a PDF page to a PNG and run OCR via the active engine."""
     try:
         pix = page.get_pixmap(dpi=dpi)
         img_bytes = pix.tobytes("png")
