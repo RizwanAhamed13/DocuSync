@@ -4,6 +4,42 @@ let activeSearchHits = [];
 let activeTag = null;
 let pollingInterval = null;
 
+// Per-document ingestion progress
+const ingestProgress  = {};   // docId → {step, pct, detail, status}
+const progressPollers = {};   // docId → intervalId
+
+const STEP_LABELS = {
+    queued:     'Queued',
+    parsing:    'Parsing',
+    ai_tagging: 'AI Analysis',
+    chunking:   'Chunking',
+    embedding:  'Embedding',
+    saving:     'Saving',
+    completed:  'Complete',
+    failed:     'Failed',
+};
+
+const STEP_ICONS = {
+    queued:     'fa-clock',
+    parsing:    'fa-file-lines',
+    ai_tagging: 'fa-wand-magic-sparkles',
+    chunking:   'fa-scissors',
+    embedding:  'fa-brain',
+    saving:     'fa-database',
+    completed:  'fa-circle-check',
+    failed:     'fa-circle-xmark',
+};
+
+// Estimated step weights for ETA display
+const STEP_ETA = {
+    queued:     '~45s',
+    parsing:    '~40s',
+    ai_tagging: '~35s',
+    chunking:   '~8s',
+    embedding:  '~5s',
+    saving:     '~2s',
+};
+
 // DOM Elements
 const dropzone = document.getElementById("dropzone");
 const fileInput = document.getElementById("fileInput");
@@ -82,8 +118,9 @@ function setupDropzone() {
 // Upload Files Handler
 async function handleFilesUpload(files) {
     if (files.length === 0) return;
-    
-    showToast(`Uploading ${files.length} file(s)...`, true);
+
+    const plural = files.length > 1 ? `${files.length} files` : files[0].name;
+    showToast(`Uploading ${plural}…`, true);
 
     for (let i = 0; i < files.length; i++) {
         const file = files[i];
@@ -100,15 +137,24 @@ async function handleFilesUpload(files) {
                 const err = await response.json();
                 throw new Error(err.detail || "Upload failed");
             }
-            
-            showToast(`Ingesting: ${file.name} in background...`, true);
+
+            const responseData = await response.json();
+            const docId = responseData.document_id;
+
+            // Kick off granular progress polling immediately
+            if (docId) {
+                ingestProgress[docId] = { step: "queued", pct: 0, detail: "Starting up…", status: "processing" };
+                startProgressPolling(docId);
+            }
+
+            showToast(`Processing: ${file.name}`, true);
         } catch (error) {
             console.error(error);
             showToast(`Error uploading ${file.name}: ${error.message}`);
         }
     }
 
-    // Refresh lists and start aggressive polling
+    // Refresh lists and keep background list polling active
     fetchDocuments();
     startPolling();
 }
@@ -155,6 +201,48 @@ function startPolling() {
     }, 3000);
 }
 
+// ── Per-document granular progress polling ────────────────────────
+function startProgressPolling(docId) {
+    if (progressPollers[docId]) return;
+    progressPollers[docId] = setInterval(async () => {
+        try {
+            const resp = await fetch(`/documents/${docId}/status`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+
+            ingestProgress[docId] = data;
+            updateProgressBarDOM(docId, data);
+
+            if (data.status !== 'processing') {
+                stopProgressPolling(docId);
+                delete ingestProgress[docId];
+                // Refresh the full list + tags once done
+                await fetchDocuments();
+                await fetchTags();
+            }
+        } catch (_) { /* ignore network blips */ }
+    }, 900);
+}
+
+function stopProgressPolling(docId) {
+    if (progressPollers[docId]) {
+        clearInterval(progressPollers[docId]);
+        delete progressPollers[docId];
+    }
+}
+
+function updateProgressBarDOM(docId, data) {
+    const bar    = document.querySelector(`[data-pb="${docId}"]`);
+    const label  = document.querySelector(`[data-pl="${docId}"]`);
+    const pct    = document.querySelector(`[data-pp="${docId}"]`);
+    const detail = document.querySelector(`[data-pd="${docId}"]`);
+    if (!bar) return; // element removed by a re-render — poller will pick it up next tick
+    bar.style.width      = `${Math.max(data.pct, 4)}%`;
+    if (label) label.innerHTML   = `<i class="fa-solid ${STEP_ICONS[data.step] || 'fa-gear'}"></i> ${STEP_LABELS[data.step] || data.step}`;
+    if (pct)   pct.textContent   = `${data.pct}%`;
+    if (detail)detail.textContent= data.detail || '';
+}
+
 // Render File List in Sidebar
 function renderFileList() {
     fileList.innerHTML = "";
@@ -171,44 +259,107 @@ function renderFileList() {
 
     filteredDocs.forEach(doc => {
         const fileItem = document.createElement("div");
-        fileItem.className = "file-item";
-        
-        let statusBadgeClass = "";
-        let statusText = doc.status;
-        if (doc.status === "processing") statusBadgeClass = "status-processing";
-        else if (doc.status === "completed") statusBadgeClass = "status-completed";
-        else if (doc.status === "failed") statusBadgeClass = "status-failed";
+        const fileIcon = doc.filename.toLowerCase().endsWith('.pdf') ? 'fa-file-pdf'
+                       : doc.filename.toLowerCase().endsWith('.docx') ? 'fa-file-word'
+                       : 'fa-file-lines';
 
-        const sizeKb = (doc.file_size_bytes / 1024).toFixed(1);
+        if (doc.status === "processing") {
+            // ── Active ingestion: show animated progress bar ──────────
+            startProgressPolling(doc.id);
+            const prog   = ingestProgress[doc.id] || {};
+            const pct    = prog.pct    || 0;
+            const step   = prog.step   || 'queued';
+            const detail = prog.detail || 'Waiting to start…';
 
-        fileItem.innerHTML = `
-            <div class="file-info">
-                <i class="fa-solid ${doc.filename.endsWith('.pdf') ? 'fa-file-pdf' : 'fa-file-word'}"></i>
-                <div class="file-text" style="min-width:0;">
-                    <div class="file-name" title="${doc.filename}">${doc.filename}</div>
-                    <span style="font-size:10px; color:var(--text-muted);">${doc.page_count} pgs | ${sizeKb} KB</span>
+            fileItem.className = "file-item file-item-processing";
+            fileItem.innerHTML = `
+                <div class="file-header-row">
+                    <div class="file-info">
+                        <i class="fa-solid ${fileIcon} file-icon-pulse" style="color:var(--status-pending);"></i>
+                        <div class="file-text" style="min-width:0;">
+                            <div class="file-name" title="${doc.filename}">${doc.filename}</div>
+                            <span style="font-size:10px; color:var(--text-muted);">Processing · ETA ${STEP_ETA[step] || '…'}</span>
+                        </div>
+                    </div>
+                    <button class="btn-delete-file" onclick="deleteDocument('${doc.id}', event)" title="Cancel & Delete">
+                        <i class="fa-regular fa-trash-can"></i>
+                    </button>
                 </div>
-            </div>
-            <div style="display:flex; align-items:center;">
-                <span class="file-status-badge ${statusBadgeClass}">${statusText}</span>
-                ${doc.status === 'completed' ? `
-                <a class="btn-delete-file" href="/documents/${doc.id}/download" target="_blank" onclick="event.stopPropagation();" title="Open Original File" style="color: var(--text-muted); margin-left: 8px;">
-                    <i class="fa-solid fa-file-arrow-down"></i>
-                </a>
-                ` : ''}
-                <button class="btn-delete-file" onclick="deleteDocument('${doc.id}', event)" title="Delete Document">
-                    <i class="fa-regular fa-trash-can"></i>
-                </button>
-            </div>
-        `;
-        
-        if (doc.status === "completed") {
+                <div class="ingest-progress-wrap">
+                    <div class="progress-header-row">
+                        <span class="progress-step-label" data-pl="${doc.id}">
+                            <i class="fa-solid ${STEP_ICONS[step] || 'fa-gear'}"></i>
+                            ${STEP_LABELS[step] || step}
+                        </span>
+                        <span class="progress-pct-badge" data-pp="${doc.id}">${pct}%</span>
+                    </div>
+                    <div class="progress-bar-track">
+                        <div class="progress-bar-fill" data-pb="${doc.id}" style="width:${Math.max(pct,4)}%"></div>
+                    </div>
+                    <div class="progress-detail-text" data-pd="${doc.id}">${detail}</div>
+                </div>
+            `;
+
+        } else if (doc.status === "failed") {
+            // ── Failed state ─────────────────────────────────────────
+            fileItem.className = "file-item";
+            const errShort = doc.error_message
+                ? doc.error_message.slice(0, 60) + (doc.error_message.length > 60 ? '…' : '')
+                : 'Unknown error';
+            fileItem.innerHTML = `
+                <div class="file-info" style="width:100%; flex-direction:column; gap:4px; align-items:flex-start;">
+                    <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <i class="fa-solid ${fileIcon}" style="color:var(--status-failed);"></i>
+                            <div class="file-name" title="${doc.filename}">${doc.filename}</div>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:4px;">
+                            <span class="file-status-badge status-failed">Failed</span>
+                            <button class="btn-delete-file" onclick="deleteDocument('${doc.id}', event)" title="Remove">
+                                <i class="fa-regular fa-trash-can"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <span style="font-size:10px; color:var(--status-failed); padding-left:24px;">${errShort}</span>
+                </div>
+            `;
+
+        } else {
+            // ── Completed state ───────────────────────────────────────
+            const sizeKb = (doc.file_size_bytes / 1024).toFixed(1);
+            // One-line summary: strip newlines, cap at 80 chars
+            const rawSummary = (doc.summary || "").replace(/\s+/g, " ").trim();
+            const shortSummary = rawSummary.length > 80
+                ? rawSummary.slice(0, 78) + "…"
+                : rawSummary;
+
+            fileItem.className = "file-item";
             fileItem.style.cursor = "pointer";
-            fileItem.addEventListener("click", () => {
-                viewFullDocument(doc.id, doc.filename);
-            });
+            fileItem.innerHTML = `
+                <div class="file-info" style="min-width:0; flex:1;">
+                    <i class="fa-solid ${fileIcon}" style="color:var(--accent-blue); flex-shrink:0;"></i>
+                    <div class="file-text" style="min-width:0;">
+                        <div class="file-name" title="${doc.filename}">${doc.filename}</div>
+                        ${shortSummary
+                            ? `<span style="font-size:10px; color:var(--text-muted); display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${rawSummary}">${shortSummary}</span>`
+                            : `<span style="font-size:10px; color:var(--text-muted);">${doc.page_count} pgs · ${sizeKb} KB</span>`
+                        }
+                    </div>
+                </div>
+                <div style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
+                    <a class="btn-delete-file" href="/documents/${doc.id}/download" target="_blank"
+                       onclick="event.stopPropagation();" title="Download original"
+                       style="color:var(--text-muted);">
+                        <i class="fa-solid fa-file-arrow-down"></i>
+                    </a>
+                    <button class="btn-delete-file" onclick="deleteDocument('${doc.id}', event)" title="Delete">
+                        <i class="fa-regular fa-trash-can"></i>
+                    </button>
+                </div>
+            `;
+            fileItem.addEventListener("click", () => viewFullDocument(doc.id, doc.filename));
         }
-        
+
         fileList.appendChild(fileItem);
     });
 }
@@ -314,7 +465,9 @@ function renderSearchResults(highlightTerm) {
         card.className = "result-card";
         card.setAttribute("data-idx", idx);
         
-        const relevancy = Math.round(hit.score * 100);
+        // Use cosine similarity (0–1) for display — RRF score is a tiny fusion
+        // number (~0.03) that looks broken when multiplied by 100.
+        const relevancy = Math.round(hit.similarity * 100);
         
         // Highlight logic
         const highlightedText = highlightText(hit.text, highlightTerm);

@@ -20,6 +20,7 @@ from embeddings import (
     reset_chroma_singleton,
 )
 from indexer import (
+    _rule_based_tags,
     check_model_version_match,
     check_ollama_availability,
     chunk_document,
@@ -27,6 +28,7 @@ from indexer import (
     get_db_connection,
     save_model_version,
 )
+from ocr import warm_up_ocr
 from parser import extract_text_by_pages
 from search import hybrid_search
 
@@ -34,11 +36,19 @@ UPLOAD_DIR = "./uploads"
 VECTOR_DIR = "./vector_store"
 
 # Both limits are configurable via environment variables
-MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_SIZE_MB", "50")) * 1024 * 1024
+MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_SIZE_MB", "120")) * 1024 * 1024
 MAX_CHUNKS_PER_DOC = int(os.getenv("MAX_CHUNKS_PER_DOC", "2000"))
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(VECTOR_DIR, exist_ok=True)
+
+# In-memory ingestion progress tracker (transient — resets on server restart)
+_ingest_progress: dict[str, dict] = {}
+
+
+def _set_progress(doc_id: str, step: str, pct: int, detail: str = "") -> None:
+    """Update the live progress state for a document being ingested."""
+    _ingest_progress[doc_id] = {"step": step, "pct": pct, "detail": detail}
 
 
 # ---------------------------------------------------------------------------
@@ -133,9 +143,49 @@ def init_db():
 # ---------------------------------------------------------------------------
 
 
+def _apply_rule_based_retag(conn) -> int:
+    """
+    Apply rule-based tags AND summaries to every document that still carries
+    default/broken values.  Runs instantly — no LLM needed.
+    Returns the number of documents updated.
+    """
+    from indexer import _rule_based_summary as _rb_summary
+
+    rows = conn.execute(
+        "SELECT d.id, d.filename, d.tags, d.summary, f.text "
+        "FROM documents d LEFT JOIN documents_fts f ON d.id = f.id "
+        "WHERE d.tags IN ('[\"Uncategorized\"]','[\"General\"]','[]') "
+        "   OR d.tags IS NULL "
+        "   OR d.summary IS NULL OR d.summary = '' "
+        "   OR d.summary LIKE 'AI summary%'"
+    ).fetchall()
+
+    updated = 0
+    for row in rows:
+        text = row["text"] or ""
+        tags = _rule_based_tags(row["filename"], text)
+        summary = _rb_summary(row["filename"], text)
+        conn.execute(
+            "UPDATE documents SET tags=?, summary=? WHERE id=?",
+            (json.dumps(tags), summary, row["id"]),
+        )
+        updated += 1
+
+    if updated:
+        conn.commit()
+    return updated
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+
+    # Fix documents that got 'Uncategorized' because Ollama was down at ingest time
+    conn = get_db_connection()
+    fixed = _apply_rule_based_retag(conn)
+    conn.close()
+    if fixed:
+        print(f"Auto-retagged {fixed} documents using rule-based tagger.")
 
     # Warn if the embedding model has changed since last run (search quality degrades
     # when queries use a different model than the stored vectors)
@@ -154,6 +204,12 @@ async def lifespan(app: FastAPI):
         print(f"\nWARNING: {ollama['warning']}\n")
     else:
         print(f"Ollama ready. Available models: {', '.join(ollama['models'])}")
+
+    # Pre-load the OCR engine so the first scanned document doesn't pay
+    # model-download latency and so startup failures are visible immediately.
+    # Runs in a thread because model loading is CPU/IO-bound.
+    print("Pre-loading OCR engine…")
+    await asyncio.to_thread(warm_up_ocr)
 
     yield  # Application is running
 
@@ -191,14 +247,26 @@ class SearchRequest(BaseModel):
 
 async def background_ingest_task(file_path: str, doc_id: str):
     """
-    Parse → chunk → embed → AI-tag → persist.
-    CPU-bound steps run via asyncio.to_thread to stay off the event loop.
+    Parse → AI-tag → chunk → embed → persist.
+    Each stage calls _set_progress so the frontend can show real-time progress.
     """
     conn = get_db_connection()
     cursor = conn.cursor()
 
     try:
-        pages_content = await asyncio.to_thread(extract_text_by_pages, file_path)
+        _set_progress(doc_id, "parsing", 5, "Reading document pages…")
+
+        # Per-page progress callback — runs inside the thread that executes
+        # extract_text_by_pages.  _set_progress only writes to a plain dict
+        # so this is safe to call from a non-async thread.
+        def _page_cb(current: int, total: int) -> None:
+            pct = 5 + int((current / max(total, 1)) * 60)   # 5 → 65%
+            _set_progress(doc_id, "parsing", pct,
+                          f"Reading page {current}/{total}…")
+
+        pages_content = await asyncio.to_thread(
+            extract_text_by_pages, file_path, _page_cb
+        )
         if not pages_content:
             raise ValueError("No extractable text content found in document.")
 
@@ -206,14 +274,17 @@ async def background_ingest_task(file_path: str, doc_id: str):
         file_size = os.path.getsize(file_path)
         page_count = len(pages_content)
 
+        pg_label = f"{page_count} page{'s' if page_count != 1 else ''}"
+        _set_progress(doc_id, "ai_tagging", 65, f"Running AI analysis on {pg_label}…")
         full_sample = "\n\n".join(p["text"] for p in pages_content[:3])
-        ai_metadata = await extract_ai_metadata(full_sample)
+        ai_metadata = await extract_ai_metadata(full_sample, filename=filename)
 
         summary = ai_metadata.get("summary", "No summary generated.")
         tags = ai_metadata.get("tags", ["General"])
         key_findings = ai_metadata.get("key_findings", [])
         entities = ai_metadata.get("entities", {})
 
+        _set_progress(doc_id, "chunking", 70, "Splitting into searchable chunks…")
         chunks = chunk_document(pages_content)
 
         if len(chunks) > MAX_CHUNKS_PER_DOC:
@@ -226,14 +297,28 @@ async def background_ingest_task(file_path: str, doc_id: str):
 
         if chunks:
             chunk_texts = [c["text"] for c in chunks]
+            _set_progress(doc_id, "embedding", 76, f"Generating vectors for {len(chunks)} chunks…")
             model = get_embedding_model()
+            import numpy as np
             embeddings_ndarray = await asyncio.to_thread(model.encode, chunk_texts)
+
+            # Guard: filter out any NaN/Inf embeddings (can occur on near-empty or
+            # whitespace-only chunks after normalization produces a zero-norm vector)
+            valid_mask = np.all(np.isfinite(embeddings_ndarray), axis=1)
+            if not np.all(valid_mask):
+                bad = int((~valid_mask).sum())
+                print(f"{os.path.basename(file_path)}: dropping {bad} chunk(s) with NaN/Inf embeddings")
+                chunks      = [c for c, v in zip(chunks, valid_mask) if v]
+                chunk_texts = [t for t, v in zip(chunk_texts, valid_mask) if v]
+                embeddings_ndarray = embeddings_ndarray[valid_mask]
+
             embeddings = embeddings_ndarray.tolist()
 
             ids = [f"{doc_id}_chunk_{i}" for i in range(len(chunks))]
             metadatas = [{"document_id": doc_id, "page": c["page"]} for c in chunks]
 
             collection = get_chroma_collection()
+            _set_progress(doc_id, "saving", 93, "Writing to vector index…")
             await asyncio.to_thread(
                 collection.add,
                 ids=ids,
@@ -242,6 +327,7 @@ async def background_ingest_task(file_path: str, doc_id: str):
                 documents=chunk_texts,
             )
 
+        _set_progress(doc_id, "saving", 97, "Persisting metadata to database…")
         cursor.execute(
             """
             UPDATE documents
@@ -268,12 +354,14 @@ async def background_ingest_task(file_path: str, doc_id: str):
         )
 
         conn.commit()
+        _ingest_progress.pop(doc_id, None)
         print(f"Successfully processed: {filename}")
 
     except Exception as exc:
         conn.rollback()
         error_msg = str(exc)
         print(f"Ingestion failed for {file_path}: {error_msg}")
+        _ingest_progress.pop(doc_id, None)
         cursor.execute(
             "UPDATE documents SET status='failed', error_message=? WHERE id=?",
             (error_msg, doc_id),
@@ -350,6 +438,41 @@ def reset_system():
     finally:
         conn.close()
     return {"message": "System reset successfully."}
+
+
+@app.post("/retag")
+def retag_documents(force: bool = False):
+    """
+    Re-applies rule-based tags.
+    force=false (default): only fixes Uncategorized/missing tags.
+    force=true: retags every document with the latest keyword rules.
+    """
+    conn = get_db_connection()
+    if force:
+        from indexer import _rule_based_summary as _rb_summary
+        # Retag + re-summarize everything with the latest rule set
+        rows = conn.execute(
+            "SELECT d.id, d.filename, f.text "
+            "FROM documents d LEFT JOIN documents_fts f ON d.id = f.id "
+            "WHERE d.status = 'completed'"
+        ).fetchall()
+        updated = 0
+        for row in rows:
+            text = row["text"] or ""
+            tags    = _rule_based_tags(row["filename"], text)
+            summary = _rb_summary(row["filename"], text)
+            conn.execute(
+                "UPDATE documents SET tags=?, summary=? WHERE id=?",
+                (json.dumps(tags), summary, row["id"]),
+            )
+            updated += 1
+        conn.commit()
+        conn.close()
+        return {"message": f"Force-retagged and re-summarized all {updated} documents.", "updated": updated}
+    else:
+        fixed = _apply_rule_based_retag(conn)
+        conn.close()
+        return {"message": f"Retagged {fixed} document(s) using rule-based tagger.", "updated": fixed}
 
 
 @app.post("/migrate-to-cosine")
@@ -477,10 +600,17 @@ def get_document_status(doc_id: str):
     conn.close()
     if not row:
         raise HTTPException(status_code=404, detail="Document not found.")
+
+    prog = _ingest_progress.get(doc_id, {})
+    status = row["status"]
+
     return {
         "document_id": doc_id,
-        "status": row["status"],
+        "status": status,
         "error_message": row["error_message"],
+        "step": prog.get("step", "queued" if status == "processing" else status),
+        "pct": prog.get("pct", 0 if status == "processing" else (100 if status == "completed" else 0)),
+        "detail": prog.get("detail", "Waiting to start…" if status == "processing" else ""),
     }
 
 

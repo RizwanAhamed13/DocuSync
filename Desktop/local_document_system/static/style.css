@@ -163,7 +163,7 @@ body {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    max-height: 180px;
+    max-height: 130px;
     overflow-y: auto;
     padding: 2px;
 }
@@ -201,8 +201,7 @@ body {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    overflow-y: auto;
-    max-height: 250px;
+    overflow-y: visible;
 }
 
 .file-item {
@@ -557,9 +556,19 @@ mark {
 }
 
 .inspector-summary {
-    font-size: 13.5px;
+    font-size: 13px;
     color: var(--text-secondary);
-    line-height: 1.6;
+    line-height: 1.55;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.inspector-summary.expanded {
+    display: block;
+    -webkit-line-clamp: unset;
+    overflow: visible;
 }
 
 .findings-list {
@@ -819,4 +828,141 @@ mark {
     line-height: 1.7;
     white-space: pre-wrap;
     font-family: var(--font-body);
+}
+
+/* ── Ingestion Progress Bar ──────────────────────────────────────── */
+.file-item-processing {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    border-color: rgba(245, 158, 11, 0.2) !important;
+    background-color: rgba(245, 158, 11, 0.03) !important;
+}
+
+.file-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+}
+
+.ingest-progress-wrap {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-glass);
+}
+
+.progress-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.progress-step-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--accent-blue);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.progress-step-label i {
+    font-size: 9px;
+}
+
+.progress-pct-badge {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    min-width: 28px;
+    text-align: right;
+}
+
+.progress-bar-track {
+    width: 100%;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 99px;
+    overflow: hidden;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    border-radius: 99px;
+    background: linear-gradient(90deg, var(--accent-blue) 0%, var(--accent-purple) 100%);
+    transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+    min-width: 4%;
+}
+
+.progress-bar-fill::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.35) 50%,
+        transparent 100%);
+    animation: progress-shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes progress-shimmer {
+    0%   { transform: translateX(-150%); }
+    100% { transform: translateX(250%); }
+}
+
+.progress-detail-text {
+    margin-top: 5px;
+    font-size: 10px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.file-icon-pulse {
+    animation: icon-pulse 2s ease-in-out infinite;
+}
+
+@keyframes icon-pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.35; }
+}
+
+/* Upload queue card — shows while files are being sent */
+.upload-queue-card {
+    background: rgba(59, 130, 246, 0.06);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    animation: fade-in 0.2s ease;
+}
+
+.upload-queue-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.upload-queue-sub {
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+@keyframes fade-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
