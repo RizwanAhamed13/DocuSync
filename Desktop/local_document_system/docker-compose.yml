@@ -30,7 +30,7 @@ services:
       - EMBEDDING_BATCH_SIZE=32
       - OLLAMA_MODEL=llama3.1:8b
       - USE_OLLAMA_TAGGING=true
-      - OCR_DEVICE=cpu
+      - OCR_DEVICE=cuda
     deploy:
       resources:
         reservations:
