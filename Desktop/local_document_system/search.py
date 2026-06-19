@@ -10,23 +10,9 @@ from indexer import get_db_connection
 logger = logging.getLogger(__name__)
 
 # ── Cross-encoder reranker ─────────────────────────────────────────────────────
-# Model: cross-encoder/ms-marco-MiniLM-L-6-v2  (~85 MB, downloads on first use)
-#
-# A cross-encoder scores (query, passage) pairs jointly by concatenating both
-# into a single BERT forward pass.  Far more accurate than cosine similarity
-# (bi-encoder) but too slow for full-corpus retrieval — so we use it only as
-# a reranking step over the top-15 RRF candidates.
-#
-# Retrieve (fast, approximate) → Rerank (accurate, exact) is the canonical
-# two-stage retrieval architecture used by:
-#   • Azure Cognitive Search Semantic Ranker
-#   • Cohere Rerank API
-#   • Amazon Kendra Smart Ranking
-#   • Google Vertex AI Ranking API
-#
-# ms-marco-MiniLM-L-6-v2 benchmarks:
-#   MRR@10 = 39.0 on MS MARCO Passage (vs 40.1 for L-12 at 3× slower).
-#   ~3 ms per (query, passage) pair on CPU — negligible for 15 candidates.
+# BAAI/bge-reranker-large (560M params, GPU)
+# Scores (query, passage) pairs jointly — far more accurate than cosine similarity.
+# Used only as a reranking step over the top-N RRF candidates (two-stage retrieval).
 _CE_MODEL_NAME = "BAAI/bge-reranker-large"
 _cross_encoder = None   # None = not yet loaded; False = load failed (no retry)
 
@@ -39,7 +25,7 @@ def _get_cross_encoder():
             from sentence_transformers import CrossEncoder
             _cross_encoder = CrossEncoder(_CE_MODEL_NAME, max_length=512)
         except Exception as e:
-            print(f"Cross-encoder load failed ({e}) — reranking disabled.")
+            logger.warning(f"Cross-encoder load failed ({e}) — reranking disabled.")
             _cross_encoder = False  # sentinel: do not retry on every query
     return _cross_encoder if _cross_encoder is not False else None
 
@@ -216,10 +202,9 @@ def _adaptive_rrf_weights(query_text: str) -> tuple[float, float]:
 
 def hybrid_search(query_text: str, limit: int = 10) -> list[dict]:
     """
-    Hybrid search: vector similarity (ChromaDB) + BM25 keyword (SQLite FTS5),
-    fused via Adaptive Weighted Reciprocal Rank Fusion.
-
-    Weights adapt per-query: keyword queries lean BM25, semantic questions lean vector.
+    Hybrid search: ChromaDB dense vectors + SQLite FTS5 BM25, fused via
+    Adaptive Weighted RRF. Weights shift per query type (see _adaptive_rrf_weights).
+    Pipeline: FTS5 → dense embed → RRF → diversity cap → cross-encoder rerank → window expand.
     """
     kw_w, sem_w = _adaptive_rrf_weights(query_text)
 
@@ -322,9 +307,8 @@ def hybrid_search(query_text: str, limit: int = 10) -> list[dict]:
         if len(results) >= rerank_pool:
             break
 
-    # --- 5. Cross-encoder reranking (ms-marco-MiniLM-L-6-v2) ---
-    # Score each (query, passage) pair jointly — much more accurate than
-    # cosine similarity for distinguishing closely-ranked candidates.
+    # --- 5. Cross-encoder reranking (bge-reranker-large) ---
+    # Score each (query, passage) pair jointly via BAAI/bge-reranker-large.
     # Skipped gracefully if the model failed to load or results are empty.
     ce_model = _get_cross_encoder()
     if ce_model and len(results) > 1:

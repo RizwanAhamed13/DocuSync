@@ -1,0 +1,336 @@
+{
+  "version": "1.0",
+  "description": "DocuSync standard retrieval benchmark — 30 QA pairs across 5 categories. Self-contained: all test documents are embedded as text so the benchmark runs without any external downloads.",
+  "metrics": ["R@1", "R@3", "R@5", "MRR@10", "mean_latency_ms"],
+  "categories": [
+    {"id": "exact",    "name": "Exact Lookup",          "description": "Course codes, professor names, specific identifiers"},
+    {"id": "policy",   "name": "Policy Retrieval",       "description": "Attendance, grading, late work, academic integrity"},
+    {"id": "semantic", "name": "Semantic Concept",        "description": "Topic-level queries without exact term overlap"},
+    {"id": "cross",    "name": "Cross-Document",          "description": "Queries where answer spans multiple documents"},
+    {"id": "hard",     "name": "Hard / Paraphrase",       "description": "Ambiguous queries, paraphrases, multi-hop reasoning"}
+  ],
+  "test_documents": [
+    {
+      "id": "doc_cs301",
+      "filename": "CS301_Data_Structures_Spring2024.txt",
+      "content": "CS 301 — Data Structures and Algorithms\nInstructor: Prof. Sarah Smith | Spring 2024 | MWF 10:00–10:50 AM | Room: CS 205\n\nCourse Description\nThis course covers fundamental data structures including arrays, linked lists, stacks, queues, trees, heaps, graphs, and hash tables. Algorithm design techniques including recursion, divide-and-conquer, dynamic programming, and greedy algorithms are studied. Time complexity analysis using Big-O notation is a core component.\n\nPrerequisites: CS 101 (Introduction to Programming) with a grade of C or higher.\n\nRequired Textbook: Introduction to Algorithms, 4th Edition, Cormen et al. (CLRS), ISBN 978-0262046305\nProgramming Language: Python 3.10 or higher. All assignments submitted via GitHub.\n\nGrading\nHomework Assignments (6 total): 30%\nMidterm Exam: 25%\nFinal Exam: 30%\nLab Participation: 15%\n\nAttendance Policy\nAttendance is mandatory. More than 3 unexcused absences will result in a 5% deduction per absence from the final grade. Attendance is tracked using iClicker.\n\nLate Work Policy\nLate assignments receive a 10% penalty per day. No submissions accepted after 5 days past the deadline. Extensions require written approval from Prof. Smith at least 48 hours in advance.\n\nAcademic Integrity\nAll work must be your own. Use of generative AI tools (ChatGPT, Copilot, etc.) for assignment solutions is prohibited. Violations will result in an automatic F for the course.\n\nOffice Hours: Monday and Wednesday 2:00–4:00 PM, CS Building Room 312. Additional hours by appointment via email: sarah.smith@university.edu"
+    },
+    {
+      "id": "doc_math401",
+      "filename": "MATH401_Linear_Algebra_Fall2023.txt",
+      "content": "MATH 401 — Linear Algebra\nInstructor: Prof. James Johnson | Fall 2023 | TR 1:00–2:15 PM | Room: Math 110\n\nCourse Description\nAdvanced treatment of linear algebra. Topics include vector spaces, linear transformations, eigenvalues and eigenvectors, inner product spaces, orthogonality, singular value decomposition (SVD), and applications to data science and machine learning.\n\nPrerequisites: MATH 201 (Multivariable Calculus) and MATH 220 (Discrete Mathematics).\n\nRequired Software: MATLAB R2023a. Student licenses available via university IT portal. All homework submitted as MATLAB live scripts (.mlx).\n\nGrading\nProblem Sets (8 total): 40%\nMidterm 1: 15%\nMidterm 2: 15%\nFinal Exam: 30%\n\nAttendance Policy\nNo formal attendance requirement. Lecture slides posted on Canvas within 24 hours of each class.\n\nLate Work Policy\nNo late submissions accepted under any circumstances. Problem sets are due at 11:59 PM on the listed date. Submit early if you anticipate conflicts.\n\nExam Policy\nAll exams are closed-book. A one-page formula sheet (both sides, handwritten) is permitted for each exam. Calculators are not allowed.\n\nOffice Hours: Tuesday and Thursday 3:00–5:00 PM, Math Building Room 220."
+    },
+    {
+      "id": "doc_bio151",
+      "filename": "BIO151_Cell_Biology_Spring2024.txt",
+      "content": "BIO 151 — Introduction to Cell Biology\nInstructor: Prof. Michelle Lee | Spring 2024 | MWF 11:00–11:50 AM | Room: Life Sciences 301\n\nCourse Description\nFoundations of cell biology including cell structure and function, membrane transport, cellular respiration, photosynthesis, the cell cycle, mitosis, meiosis, DNA replication, transcription, and translation. Laboratory sections meet separately (2 hrs/week).\n\nPrerequisites: CHEM 101 (General Chemistry I) or concurrent enrollment.\n\nRequired Textbook: Molecular Biology of the Cell, 7th Edition, Alberts et al. ISBN 978-0393884821.\n\nGrading\nExams (3 midterms, no drops): 45%\nFinal Exam: 25%\nLab Reports (6 total): 20%\nGroup Project — Cell Research Presentation: 10%\n\nGroup Project\nStudents will form groups of 3–4 and present a 15-minute research presentation on a cell biology topic of their choice. Topics must be approved by Week 4. Each group member must speak for at least 3 minutes. Peer evaluation counts for 20% of the project grade.\n\nLate Work Policy\nLab reports: 10% deduction per day late. Group presentations cannot be rescheduled except for university-excused absences.\n\nOffice Hours: Monday and Friday 1:00–3:00 PM, Life Sciences Building Room 115. Zoom link available on Canvas."
+    },
+    {
+      "id": "doc_ece452",
+      "filename": "ECE452_Digital_Signal_Processing_Fall2023.txt",
+      "content": "ECE 452 — Digital Signal Processing\nInstructor: Prof. Wei Chen | Fall 2023 | TR 9:30–10:45 AM | Room: Engineering 408\n\nCourse Description\nDiscrete-time signals and systems, the Z-transform, DFT and FFT algorithms, FIR and IIR digital filter design, quantization effects, multirate signal processing, and introduction to adaptive filtering. MATLAB is used throughout for design and simulation.\n\nPrerequisites: ECE 301 (Signals and Systems) and MATH 401 (Linear Algebra) or concurrent enrollment.\n\nRequired Software: MATLAB with the Signal Processing Toolbox. Python with SciPy is accepted as an alternative.\n\nGrading\nHomework (10 assignments): 35%\nMidterm Exam: 25%\nFinal Exam: 30%\nFinal Project (individual, MATLAB/Python implementation): 10%\n\nAttendance Policy\nAttendance is strongly encouraged but not graded. Lecture recordings will not be provided; missing class is at your own risk.\n\nLate Work Policy\nHomework late penalty: 20% per day, maximum 3 days. After 3 days, assignment receives 0.\n\nSafety\nAll lab work requires closed-toe shoes and safety glasses. Students violating lab safety rules will be asked to leave.\n\nFinal Exam: December 14, 2023, 8:00–10:00 AM, Engineering 408."
+    },
+    {
+      "id": "doc_econ201",
+      "filename": "ECON201_Microeconomics_Spring2024.txt",
+      "content": "ECON 201 — Principles of Microeconomics\nInstructor: Prof. Carlos Garcia | Spring 2024 | MWF 9:00–9:50 AM | Room: Social Sciences 120\n\nCourse Description\nIntroduction to microeconomic theory: supply and demand, consumer and producer theory, market structures (perfect competition, monopoly, oligopoly), game theory basics, externalities, and public goods. Policy applications include minimum wage, price controls, taxation, and environmental regulation.\n\nPrerequisites: None. Calculus is helpful but not required.\n\nRequired Textbook: Principles of Economics, 9th Edition, Mankiw.\nCalculator: A basic scientific calculator is permitted on exams; smartphones are not.\n\nGrading\nQuizzes (weekly, best 10 of 12): 20%\nMidterm Exam 1: 20%\nMidterm Exam 2: 20%\nFinal Exam: 30%\nClass Participation: 10%\n\nAttendance Policy\nAttendance is not formally tracked. However, in-class participation (clicker questions, discussions) counts for 10% of your grade and cannot be made up.\n\nLate Work Policy\nNo late quizzes accepted. Quiz answers are posted immediately after class ends.\n\nOffice Hours: MWF 10:00–11:00 AM and by appointment. Room: Social Sciences 215."
+    },
+    {
+      "id": "doc_cs568",
+      "filename": "CS568_Machine_Learning_Fall2023.txt",
+      "content": "CS 568 — Machine Learning\nInstructor: Prof. Robert Williams | Fall 2023 | TR 2:00–3:15 PM | Room: CS 310\n\nCourse Description\nCore machine learning algorithms and their theoretical foundations. Topics include supervised learning (linear regression, logistic regression, SVMs, decision trees, ensemble methods), unsupervised learning (k-means, PCA, autoencoders), neural networks and deep learning (feedforward, CNN, RNN, Transformers), reinforcement learning basics, and practical ML engineering (data pipelines, feature engineering, model evaluation, hyperparameter tuning).\n\nPrerequisites: CS 301 (Data Structures), MATH 401 (Linear Algebra), STAT 302 (Probability and Statistics). Python proficiency required.\n\nRequired Tools: Python 3.10+, PyTorch 2.0+, scikit-learn, pandas, NumPy. All assignments run on university GPU cluster (instructions on Canvas).\n\nGrading\nProgramming Assignments (5 total): 40%\nMidterm Exam: 20%\nFinal Project (team of 2, original ML application): 25%\nPaper Reviews (4 total, 2 pages each): 15%\n\nFinal Project\nTeams of 2 will build an original machine learning application and present results in a 12-minute poster session during finals week. A 6-page report in NeurIPS format is required. Dataset and code must be released on GitHub.\n\nLate Work Policy\nProgramming assignments: 20% deduction per day, no submissions beyond 3 days. Paper reviews: 0 if late. Final project: deadline is firm.\n\nOffice Hours: Prof. Williams — Tuesday 4:00–6:00 PM, CS 315. TAs hold office hours listed on Canvas.\n\nEmail: r.williams@university.edu | Response within 48 hours."
+    },
+    {
+      "id": "doc_chem122",
+      "filename": "CHEM122_Organic_Chemistry_Spring2024.txt",
+      "content": "CHEM 122 — Organic Chemistry I\nInstructor: Prof. Patricia Brown | Spring 2024 | MWF 8:00–8:50 AM | Room: Chemistry 201\n\nCourse Description\nStructure, bonding, and reactivity of organic compounds. Topics include nomenclature, stereochemistry, substitution and elimination reactions, addition reactions to alkenes and alkynes, carbonyl chemistry, and spectroscopic methods (IR, NMR, MS).\n\nPrerequisites: CHEM 101 and CHEM 102 (General Chemistry I and II) with grades of C or higher.\n\nRequired Lab: CHEM 122L (co-requisite). Lab safety certification must be completed before Week 1.\n\nRequired Textbook: Organic Chemistry, 10th Edition, Wade & Simek. ISBN 978-0134161846.\n\nGrading\nLecture Exams (3): 45%\nFinal Exam: 30%\nLab Grade (from CHEM 122L): 20%\nOnline Homework (Mastering Chemistry): 5%\n\nLab Safety\nLab coats, safety goggles, and closed-toe shoes are mandatory at all times in the laboratory. Students without proper safety equipment will not be allowed to participate and will receive a zero for that lab. Students must complete the safety certification quiz with a score of 100% before attending their first lab session.\n\nAttendance Policy\nLab attendance is mandatory. Missing more than 2 lab sessions results in automatic course failure regardless of lecture performance.\n\nOffice Hours: Monday 9:00–11:00 AM and Wednesday 1:00–3:00 PM, Chemistry Building Room 310."
+    },
+    {
+      "id": "doc_psych301",
+      "filename": "PSYCH301_Research_Methods_Fall2023.txt",
+      "content": "PSYCH 301 — Research Methods in Psychology\nInstructor: Prof. Angela Davis | Fall 2023 | TR 11:00 AM–12:15 PM | Room: Tobin 220\n\nCourse Description\nScientific methods in psychological research. Topics include experimental design, observational methods, survey methodology, reliability and validity, IRB ethics, data collection, statistical analysis using SPSS and R, and scientific writing in APA 7th edition format.\n\nPrerequisites: PSYCH 101 and STAT 101 (Introduction to Statistics).\n\nRequired Software: R and RStudio (free), SPSS (university license available). All reports must be written in APA 7th edition format.\n\nGrading\nResearch Proposal (individual): 15%\nLab Reports (4 total): 40%\nFinal Research Paper (APA format, 8–10 pages): 25%\nClass Participation and Peer Review: 10%\nFinal Exam: 10%\n\nWriting Requirement\nThis is a writing-intensive course. All written work must follow APA 7th edition guidelines. The Writing Center offers free consultations; students are strongly encouraged to use this resource before submitting major assignments.\n\nEthics\nAll research involving human subjects must be approved by the IRB (Institutional Review Board). Students may not collect data from real participants without prior written IRB approval.\n\nLate Work Policy\nLate papers receive a 5-point deduction per day (out of 100). Work more than 7 days late receives a 0.\n\nOffice Hours: Tuesday and Thursday 1:00–3:00 PM, Tobin Hall Room 310."
+    },
+    {
+      "id": "doc_mgmt450",
+      "filename": "MGMT450_Strategic_Management_Spring2024.txt",
+      "content": "MGMT 450 — Strategic Management\nInstructor: Prof. Thomas Wilson | Spring 2024 | TR 3:30–4:45 PM | Room: Isenberg 114\n\nCourse Description\nCapstone course in business strategy. Topics include competitive analysis (Porter's Five Forces, SWOT), resource-based view, corporate strategy (vertical integration, diversification), international strategy, strategic alliances, mergers and acquisitions, and strategy implementation. Heavy use of real-world case studies from Harvard Business Review and MIT Sloan.\n\nPrerequisites: MGMT 300 (Principles of Management), FIN 301 (Corporate Finance), MKTG 301 (Marketing Management). Open to seniors and juniors with department permission.\n\nCase Studies\nApproximately 3 case studies per week will be assigned. All students must read cases before class. Cold-calling is used extensively. A written case analysis (1 page, single-spaced) is due for 8 of the assigned cases.\n\nGrading\nCase Analyses (8 submissions): 25%\nMidterm Exam: 20%\nGroup Project — Strategic Consulting Report: 30%\nFinal Exam: 15%\nClass Participation: 10%\n\nGroup Project\nGroups of 4–5 students will select a real company, conduct a full strategic analysis, and present recommendations to the class in a 20-minute presentation. A 15-page written report is required. Industry sponsor presentations are possible for top groups.\n\nAttendance and Participation\nParticipation is graded. Missing more than 2 classes without prior notice will affect your participation grade significantly. The case discussion format requires preparation; unprepared students may be asked to leave.\n\nOffice Hours: Tuesday 5:30–7:00 PM, Isenberg 225. Prof. Wilson is also reachable via LinkedIn."
+    },
+    {
+      "id": "doc_stat302",
+      "filename": "STAT302_Probability_Statistics_Fall2023.txt",
+      "content": "STAT 302 — Probability and Statistics\nInstructor: Prof. Elena Martinez | Fall 2023 | MWF 2:00–2:50 PM | Room: Math 215\n\nCourse Description\nMathematical foundations of probability and statistics. Topics include sample spaces, probability axioms, conditional probability, Bayes theorem, discrete and continuous random variables (Binomial, Poisson, Normal, Exponential, Gamma distributions), expectation and variance, moment generating functions, the Central Limit Theorem, hypothesis testing, confidence intervals, linear regression, and introduction to Bayesian inference.\n\nPrerequisites: MATH 201 (Multivariable Calculus). Familiarity with basic programming in R or Python is helpful.\n\nRequired Software: R and RStudio. Homework submitted as R Markdown (.Rmd) files knitted to PDF.\n\nGrading\nHomework (10 assignments): 35%\nMidterm 1 (Chapters 1–5): 20%\nMidterm 2 (Chapters 6–10): 20%\nFinal Exam (comprehensive): 25%\n\nAttendance Policy\nAttendance is not required but strongly recommended. The pace is fast; falling behind is difficult to recover from.\n\nLate Work Policy\nHomework accepted up to 48 hours late with a 20% penalty. After 48 hours, 0 points.\n\nCollaboration Policy\nDiscussion with classmates is encouraged. However, all written solutions must be your own. Submitting identical solutions is academic dishonesty.\n\nFinal Exam: December 12, 2023, 3:30–5:30 PM, Math 215. Bring student ID.\nOffice Hours: Monday and Wednesday 3:00–5:00 PM, Math Building Room 118."
+    }
+  ],
+  "queries": [
+    {
+      "id": "q01",
+      "category": "exact",
+      "query": "CS 568 machine learning course",
+      "relevant_doc_ids": ["doc_cs568"],
+      "expected_answer_contains": ["CS 568", "Machine Learning", "Williams"],
+      "difficulty": "easy",
+      "notes": "Exact course code match — BM25 should dominate"
+    },
+    {
+      "id": "q02",
+      "category": "exact",
+      "query": "Prof. Sarah Smith office hours",
+      "relevant_doc_ids": ["doc_cs301"],
+      "expected_answer_contains": ["Sarah Smith", "Office Hours", "312"],
+      "difficulty": "easy",
+      "notes": "Exact name lookup"
+    },
+    {
+      "id": "q03",
+      "category": "exact",
+      "query": "MATH 401 final exam date",
+      "relevant_doc_ids": ["doc_math401"],
+      "expected_answer_contains": ["MATH 401", "Linear Algebra"],
+      "difficulty": "easy",
+      "notes": "Course code + query type"
+    },
+    {
+      "id": "q04",
+      "category": "exact",
+      "query": "ECE 452 final exam December 2023",
+      "relevant_doc_ids": ["doc_ece452"],
+      "expected_answer_contains": ["December 14, 2023", "ECE 452"],
+      "difficulty": "easy",
+      "notes": "Date + course code — both BM25 and semantic should find this"
+    },
+    {
+      "id": "q05",
+      "category": "exact",
+      "query": "CS 301 prerequisites",
+      "relevant_doc_ids": ["doc_cs301"],
+      "expected_answer_contains": ["CS 101", "C or higher"],
+      "difficulty": "easy",
+      "notes": "Course code + field name"
+    },
+    {
+      "id": "q06",
+      "category": "exact",
+      "query": "Prof. Elena Martinez STAT 302",
+      "relevant_doc_ids": ["doc_stat302"],
+      "expected_answer_contains": ["Elena Martinez", "STAT 302"],
+      "difficulty": "easy",
+      "notes": "Double exact match — professor name + course code"
+    },
+    {
+      "id": "q07",
+      "category": "policy",
+      "query": "attendance policy penalty absences",
+      "relevant_doc_ids": ["doc_cs301", "doc_chem122", "doc_bio151"],
+      "expected_answer_contains": ["absence", "deduction", "mandatory"],
+      "difficulty": "medium",
+      "notes": "Policy keyword query — multiple docs have attendance policies"
+    },
+    {
+      "id": "q08",
+      "category": "policy",
+      "query": "late submission penalty per day",
+      "relevant_doc_ids": ["doc_cs301", "doc_ece452", "doc_cs568", "doc_psych301"],
+      "expected_answer_contains": ["late", "penalty", "per day"],
+      "difficulty": "medium",
+      "notes": "4 documents have explicit per-day late penalties"
+    },
+    {
+      "id": "q09",
+      "category": "policy",
+      "query": "no late submissions accepted",
+      "relevant_doc_ids": ["doc_math401", "doc_econ201"],
+      "expected_answer_contains": ["No late", "not accepted", "no late"],
+      "difficulty": "medium",
+      "notes": "Exact policy phrasing — BM25 should rank these high"
+    },
+    {
+      "id": "q10",
+      "category": "policy",
+      "query": "academic integrity AI tools prohibited generative",
+      "relevant_doc_ids": ["doc_cs301"],
+      "expected_answer_contains": ["generative AI", "ChatGPT", "prohibited"],
+      "difficulty": "medium",
+      "notes": "Only CS 301 explicitly mentions AI tool prohibition"
+    },
+    {
+      "id": "q11",
+      "category": "policy",
+      "query": "lab safety equipment requirements",
+      "relevant_doc_ids": ["doc_chem122"],
+      "expected_answer_contains": ["lab coat", "safety goggles", "closed-toe"],
+      "difficulty": "medium",
+      "notes": "Domain-specific safety policy"
+    },
+    {
+      "id": "q12",
+      "category": "policy",
+      "query": "IRB approval human subjects research ethics",
+      "relevant_doc_ids": ["doc_psych301"],
+      "expected_answer_contains": ["IRB", "human subjects", "written"],
+      "difficulty": "medium",
+      "notes": "Domain-specific policy — research ethics"
+    },
+    {
+      "id": "q13",
+      "category": "semantic",
+      "query": "courses that use Python programming language",
+      "relevant_doc_ids": ["doc_cs301", "doc_cs568", "doc_ece452"],
+      "expected_answer_contains": ["Python"],
+      "difficulty": "medium",
+      "notes": "Semantic query — Python mentioned in context of tools, not as a topic keyword"
+    },
+    {
+      "id": "q14",
+      "category": "semantic",
+      "query": "what course covers neural networks and deep learning?",
+      "relevant_doc_ids": ["doc_cs568"],
+      "expected_answer_contains": ["neural network", "deep learning", "CS 568"],
+      "difficulty": "medium",
+      "notes": "Semantic — topic match, not exact course code"
+    },
+    {
+      "id": "q15",
+      "category": "semantic",
+      "query": "probability distributions and statistical inference",
+      "relevant_doc_ids": ["doc_stat302"],
+      "expected_answer_contains": ["Binomial", "Normal", "hypothesis testing"],
+      "difficulty": "medium",
+      "notes": "Semantic match on topic — should retrieve STAT 302"
+    },
+    {
+      "id": "q16",
+      "category": "semantic",
+      "query": "competitive advantage business strategy analysis",
+      "relevant_doc_ids": ["doc_mgmt450"],
+      "expected_answer_contains": ["Porter", "SWOT", "competitive"],
+      "difficulty": "hard",
+      "notes": "Semantic paraphrase — 'competitive advantage' not literally in doc, 'competitive analysis' is"
+    },
+    {
+      "id": "q17",
+      "category": "semantic",
+      "query": "scientific writing format citations references",
+      "relevant_doc_ids": ["doc_psych301"],
+      "expected_answer_contains": ["APA", "writing"],
+      "difficulty": "hard",
+      "notes": "Semantic — APA format is the answer but query uses different words"
+    },
+    {
+      "id": "q18",
+      "category": "semantic",
+      "query": "signal filtering frequency domain transform",
+      "relevant_doc_ids": ["doc_ece452"],
+      "expected_answer_contains": ["FFT", "filter", "DFT"],
+      "difficulty": "hard",
+      "notes": "Technical semantic query — frequency domain maps to FFT/DFT topics in ECE 452"
+    },
+    {
+      "id": "q19",
+      "category": "cross",
+      "query": "courses that require a group project",
+      "relevant_doc_ids": ["doc_bio151", "doc_cs568", "doc_mgmt450"],
+      "expected_answer_contains": ["group", "project", "team"],
+      "difficulty": "hard",
+      "notes": "Three documents have group projects — test cross-document recall"
+    },
+    {
+      "id": "q20",
+      "category": "cross",
+      "query": "courses that use R or RStudio for data analysis",
+      "relevant_doc_ids": ["doc_stat302", "doc_psych301"],
+      "expected_answer_contains": ["RStudio", "R Markdown", "R and"],
+      "difficulty": "medium",
+      "notes": "Two courses use R — both should appear in top-5"
+    },
+    {
+      "id": "q21",
+      "category": "cross",
+      "query": "courses that require MATLAB",
+      "relevant_doc_ids": ["doc_math401", "doc_ece452"],
+      "expected_answer_contains": ["MATLAB"],
+      "difficulty": "medium",
+      "notes": "Exact tool name — BM25 finds both"
+    },
+    {
+      "id": "q22",
+      "category": "cross",
+      "query": "which courses have mandatory lab attendance?",
+      "relevant_doc_ids": ["doc_chem122", "doc_bio151"],
+      "expected_answer_contains": ["lab", "mandatory", "attendance"],
+      "difficulty": "hard",
+      "notes": "Both chem and bio have mandatory lab attendance — cross-document diversity check"
+    },
+    {
+      "id": "q23",
+      "category": "cross",
+      "query": "courses requiring written research paper or report",
+      "relevant_doc_ids": ["doc_psych301", "doc_cs568", "doc_mgmt450"],
+      "expected_answer_contains": ["paper", "report", "written"],
+      "difficulty": "hard",
+      "notes": "Semantic — 'written report' paraphrase for research paper"
+    },
+    {
+      "id": "q24",
+      "category": "cross",
+      "query": "courses with participation as graded component",
+      "relevant_doc_ids": ["doc_econ201", "doc_mgmt450", "doc_psych301"],
+      "expected_answer_contains": ["participation", "graded", "10%"],
+      "difficulty": "hard",
+      "notes": "Three courses explicitly grade participation — tests multi-doc cross retrieval"
+    },
+    {
+      "id": "q25",
+      "category": "hard",
+      "query": "which instructor is reachable on LinkedIn?",
+      "relevant_doc_ids": ["doc_mgmt450"],
+      "expected_answer_contains": ["LinkedIn", "Wilson"],
+      "difficulty": "hard",
+      "notes": "Very specific detail — only Prof. Wilson mentions LinkedIn"
+    },
+    {
+      "id": "q26",
+      "category": "hard",
+      "query": "course covering how genes are copied and proteins made",
+      "relevant_doc_ids": ["doc_bio151"],
+      "expected_answer_contains": ["DNA replication", "transcription", "translation"],
+      "difficulty": "hard",
+      "notes": "Heavy paraphrase — 'genes copied' = DNA replication, 'proteins made' = translation"
+    },
+    {
+      "id": "q27",
+      "category": "hard",
+      "query": "course where missing two lab sessions fails you",
+      "relevant_doc_ids": ["doc_chem122"],
+      "expected_answer_contains": ["2 lab sessions", "automatic", "failure"],
+      "difficulty": "hard",
+      "notes": "Very specific consequence — tests precise policy retrieval"
+    },
+    {
+      "id": "q28",
+      "category": "hard",
+      "query": "can I submit an assignment one week late?",
+      "relevant_doc_ids": ["doc_cs301", "doc_psych301", "doc_ece452"],
+      "expected_answer_contains": ["5 days", "7 days", "3 days"],
+      "difficulty": "hard",
+      "notes": "Requires reasoning about time-window policies; multiple docs have different caps"
+    },
+    {
+      "id": "q29",
+      "category": "hard",
+      "query": "randomized experiments and observational study design",
+      "relevant_doc_ids": ["doc_psych301"],
+      "expected_answer_contains": ["experimental design", "observational"],
+      "difficulty": "hard",
+      "notes": "Paraphrase — PSYCH 301 covers these under 'Research Methods'"
+    },
+    {
+      "id": "q30",
+      "category": "hard",
+      "query": "which courses have prerequisites in both math and computer science?",
+      "relevant_doc_ids": ["doc_cs568", "doc_ece452"],
+      "expected_answer_contains": ["CS 301", "MATH 401", "Linear Algebra"],
+      "difficulty": "hard",
+      "notes": "Multi-hop: must match courses where prereqs include BOTH CS and MATH subjects"
+    }
+  ]
+}

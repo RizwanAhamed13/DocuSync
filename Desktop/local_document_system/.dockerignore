@@ -9,7 +9,6 @@ __pycache__/
 .paddle/
 .cache/
 benchmark/
-colab_ocr_service.py
 .git/
 .gitignore
 .env
