@@ -9,6 +9,7 @@ __pycache__/
 .paddle/
 .cache/
 benchmark/
+nginx/
 .git/
 .gitignore
 .env
