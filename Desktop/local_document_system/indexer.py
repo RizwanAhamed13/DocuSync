@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -7,11 +8,19 @@ import threading
 
 import httpx
 
+logger = logging.getLogger(__name__)
+
 from embeddings import EMBEDDING_MODEL_NAME, get_chroma_collection, get_embedding_model
 
 _OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_URL = f"{_OLLAMA_HOST}/api/generate"
 OLLAMA_BASE_URL = _OLLAMA_HOST
+
+# Primary tagging model — configurable via env var.
+# llama3.1:8b is the right fit: JSON extraction/classification at 4.7 GB GPU,
+# 3–5 s per doc. Fallback list tried in order if primary fails or is not pulled.
+_PRIMARY_MODEL  = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
+_FALLBACK_MODELS = ["llama3", "phi3"]
 
 ollama_lock = asyncio.Lock()
 
@@ -994,21 +1003,20 @@ async def _call_ollama(model: str, payload: dict) -> dict | None:
                 response = await client.post(OLLAMA_URL, json=payload)
                 if response.status_code == 200:
                     return json.loads(response.json().get("response", "{}"))
-                print(f"Ollama {model} returned HTTP {response.status_code}")
+                logger.warning(f"Ollama {model} returned HTTP {response.status_code}")
                 return None
         except httpx.TimeoutException:
-            wait = 2**attempt  # 1 s, 2 s, 4 s
-            print(
-                f"Ollama {model} timeout (attempt {attempt + 1}/3). "
-                f"Retrying in {wait}s…"
+            wait = 2**attempt
+            logger.warning(
+                f"Ollama {model} timeout (attempt {attempt + 1}/3). Retrying in {wait}s…"
             )
             if attempt < 2:
                 await asyncio.sleep(wait)
         except json.JSONDecodeError as exc:
-            print(f"Ollama {model} returned invalid JSON: {exc}")
+            logger.warning(f"Ollama {model} returned invalid JSON: {exc}")
             return None
         except Exception as exc:
-            print(f"Ollama {model} unexpected error: {exc}")
+            logger.error(f"Ollama {model} unexpected error: {exc}")
             return None
     return None
 
@@ -1063,16 +1071,16 @@ Document excerpt:
     try:
         await asyncio.wait_for(ollama_lock.acquire(), timeout=300.0)
     except asyncio.TimeoutError:
-        print("Timed out waiting for Ollama lock — using rule-based tags.")
+        logger.warning("Timed out waiting for Ollama lock — using rule-based tags.")
         return {**_DEFAULT_METADATA, "tags": rb_tags, "summary": ""}
 
     result = None
     try:
-        for model in ["llama3", "phi3"]:
+        for model in [_PRIMARY_MODEL] + _FALLBACK_MODELS:
             result = await _call_ollama(model, {**base_payload, "model": model})
             if result and isinstance(result, dict) and "summary" in result:
                 break
-            print(f"Model {model} returned unusable result, trying next…")
+            logger.warning(f"Model {model} returned unusable result, trying next…")
     finally:
         ollama_lock.release()
 
