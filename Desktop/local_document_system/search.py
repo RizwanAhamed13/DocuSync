@@ -1,10 +1,13 @@
 import json
+import logging
 import os
 import re
 import sqlite3
 
 from embeddings import EMBEDDING_MODEL_NAME, get_chroma_collection, get_embedding_model
 from indexer import get_db_connection
+
+logger = logging.getLogger(__name__)
 
 # ── Cross-encoder reranker ─────────────────────────────────────────────────────
 # Model: cross-encoder/ms-marco-MiniLM-L-6-v2  (~85 MB, downloads on first use)
@@ -177,21 +180,54 @@ def _fts_keyword_ranks(query_text: str) -> dict[str, int]:
         conn.close()
 
 
+def _adaptive_rrf_weights(query_text: str) -> tuple[float, float]:
+    """
+    Dynamically choose RRF weights based on query type.
+
+    Keyword query (short, contains exact terms, course codes, dates):
+      BM25 heavy — 0.8 / 0.2.  These queries have exact token matches and BM25
+      will nail them; semantic adds noise from paraphrase matches.
+
+    Semantic query (long natural-language question, ≥6 words, no code patterns):
+      Balanced — 0.5 / 0.5.  Semantic embedding captures meaning across
+      paraphrases; BM25 alone misses synonyms.
+
+    Mixed (default): env-var defaults (0.6 / 0.4).
+    """
+    # Respect explicit env-var overrides
+    if os.getenv("RRF_KW_WEIGHT") or os.getenv("RRF_SEM_WEIGHT"):
+        return RRF_KW_WEIGHT, RRF_SEM_WEIGHT
+
+    words = query_text.strip().split()
+    # Signals of a keyword / exact-match query
+    has_course_code = bool(re.search(r"\b[A-Z]{2,6}\s*\d{3,4}\b", query_text))
+    has_date = bool(re.search(r"\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b|\b20\d{2}\b", query_text))
+    is_short = len(words) <= 4
+
+    if has_course_code or has_date or is_short:
+        return 0.8, 0.2   # keyword-heavy
+
+    is_long_question = len(words) >= 8 and "?" in query_text
+    if is_long_question:
+        return 0.5, 0.5   # balanced semantic
+
+    return RRF_KW_WEIGHT, RRF_SEM_WEIGHT  # default
+
+
 def hybrid_search(query_text: str, limit: int = 10) -> list[dict]:
     """
     Hybrid search: vector similarity (ChromaDB) + BM25 keyword (SQLite FTS5),
-    fused via Weighted Reciprocal Rank Fusion.
+    fused via Adaptive Weighted Reciprocal Rank Fusion.
 
-    score = RRF_KW_WEIGHT/(k + keyword_rank) + RRF_SEM_WEIGHT/(k + semantic_rank)
-
-    Default weights (1.5 / 0.5) give BM25 3× more influence than semantic.
-    Tuned from benchmark: BM25 achieves 92% R@1 vs 64% semantic on this corpus.
-    Both weights are overridable via RRF_KW_WEIGHT / RRF_SEM_WEIGHT env vars.
+    Weights adapt per-query: keyword queries lean BM25, semantic questions lean vector.
     """
+    kw_w, sem_w = _adaptive_rrf_weights(query_text)
+
     # --- 1. Keyword ranks (FTS5 BM25) ---
     keyword_ranks = _fts_keyword_ranks(query_text)
     # Penalty rank for docs not found by keyword search
     kw_penalty = len(keyword_ranks) + RRF_K
+    logger.debug(f"Query '{query_text[:40]}' → adaptive RRF kw={kw_w:.1f} sem={sem_w:.1f}")
 
     # --- 2. Semantic search (ChromaDB) ---
     model = get_embedding_model()
@@ -244,8 +280,8 @@ def hybrid_search(query_text: str, limit: int = 10) -> list[dict]:
         doc_id = meta["document_id"]
         kw_rank = keyword_ranks.get(doc_id, kw_penalty)
 
-        rrf_score = (RRF_KW_WEIGHT  / (RRF_K + kw_rank) +
-                     RRF_SEM_WEIGHT / (RRF_K + sem_rank))
+        rrf_score = (kw_w  / (RRF_K + kw_rank) +
+                     sem_w / (RRF_K + sem_rank))
 
         if collection_space == "cosine":
             cos_sim = max(0.0, 1.0 - distance)
@@ -299,7 +335,53 @@ def hybrid_search(query_text: str, limit: int = 10) -> list[dict]:
                 r["ce_score"] = round(float(ce_score), 4)
             results.sort(key=lambda x: x.get("ce_score", 0.0), reverse=True)
         except Exception as ce_err:
-            print(f"Cross-encoder reranking skipped: {ce_err}")
-            # Fall back to RRF ordering — results already sorted correctly
+            logger.warning(f"Cross-encoder reranking skipped: {ce_err}")
 
-    return results[:limit]
+    # --- 6. Cross-document diversity: max 3 chunks per document ---
+    # Prevents all top results coming from the same large document.
+    # After reranking, greedily pick results respecting the per-doc cap.
+    MAX_CHUNKS_PER_DOC = 3
+    doc_chunk_count: dict[str, int] = {}
+    diverse: list[dict] = []
+    overflow: list[dict] = []  # candidates that exceeded per-doc cap
+    for r in results:
+        doc_id = r["document_id"]
+        if doc_chunk_count.get(doc_id, 0) < MAX_CHUNKS_PER_DOC:
+            doc_chunk_count[doc_id] = doc_chunk_count.get(doc_id, 0) + 1
+            diverse.append(r)
+        else:
+            overflow.append(r)
+        if len(diverse) >= limit:
+            break
+    # Fill remaining slots from overflow if we didn't reach limit via diversity
+    if len(diverse) < limit:
+        diverse.extend(overflow[: limit - len(diverse)])
+
+    # --- 7. Sentence-window context expansion ---
+    # For each matched chunk, fetch the adjacent chunks (±1) from ChromaDB and
+    # attach them as `context` — a wider window that gives the LLM surrounding
+    # sentences without changing what was actually matched (text stays the chunk).
+    collection = get_chroma_collection()
+    for r in diverse:
+        chunk_id: str = r["chunk_id"]
+        # Chunk IDs are "{doc_id}_chunk_{n}" — parse the index
+        m = re.match(r"^(.+)_chunk_(\d+)$", chunk_id)
+        if not m:
+            r["context"] = r["text"]
+            continue
+        doc_id, idx = m.group(1), int(m.group(2))
+        neighbor_ids = []
+        if idx > 0:
+            neighbor_ids.append(f"{doc_id}_chunk_{idx - 1}")
+        neighbor_ids.append(chunk_id)
+        if True:  # always try next chunk
+            neighbor_ids.append(f"{doc_id}_chunk_{idx + 1}")
+        try:
+            fetched = collection.get(ids=neighbor_ids, include=["documents"])
+            id_to_text = dict(zip(fetched["ids"], fetched["documents"]))
+            window_parts = [id_to_text[nid] for nid in neighbor_ids if nid in id_to_text]
+            r["context"] = " ".join(window_parts)
+        except Exception:
+            r["context"] = r["text"]
+
+    return diverse
