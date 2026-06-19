@@ -18,6 +18,13 @@ logger = logging.getLogger(__name__)
 
 os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
 
+# OCR runs on CPU by default — it is a background batch task (fires only during
+# document upload, never during search queries) so GPU is not needed for it.
+# Keeping OCR on CPU frees the ~1 GB + activation headroom that would otherwise
+# push peak VRAM over 16 GB when embedding + Ollama layers are also resident.
+# Override with OCR_DEVICE=gpu if you have a second GPU or more VRAM to spare.
+_OCR_DEVICE = os.getenv("OCR_DEVICE", "cpu")
+
 try:
     from paddleocr import PaddleOCR as _PaddleOCR
     import paddle as _paddle_fw  # noqa: F401
@@ -48,10 +55,11 @@ def _get_ocr_engine():
     if _ocr_engine is None:
         with _ocr_engine_lock:
             if _ocr_engine is None:
-                logger.info("Loading PaddleOCR PP-OCRv5 server engine on GPU…")
+                logger.info(f"Loading PaddleOCR PP-OCRv5 server engine on {_OCR_DEVICE}…")
                 _ocr_engine = _PaddleOCR(
                     ocr_version="PP-OCRv5",
                     lang="en",
+                    device=_OCR_DEVICE,
                     use_doc_orientation_classify=False,
                     use_doc_unwarping=False,
                     use_textline_orientation=False,
