@@ -1,0 +1,17 @@
+uploads/
+vector_store/
+document_metadata.db
+document_metadata.db-shm
+document_metadata.db-wal
+__pycache__/
+*.pyc
+.paddlex/
+.paddle/
+.cache/
+benchmark/
+colab_ocr_service.py
+.git/
+.gitignore
+.env
+*.log
+README.md

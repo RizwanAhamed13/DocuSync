@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import re
 import sqlite3
 import threading
@@ -8,8 +9,9 @@ import httpx
 
 from embeddings import EMBEDDING_MODEL_NAME, get_chroma_collection, get_embedding_model
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-OLLAMA_BASE_URL = "http://localhost:11434"
+_OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_URL = f"{_OLLAMA_HOST}/api/generate"
+OLLAMA_BASE_URL = _OLLAMA_HOST
 
 ollama_lock = asyncio.Lock()
 
