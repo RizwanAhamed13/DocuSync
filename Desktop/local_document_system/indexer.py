@@ -16,9 +16,10 @@ _OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_URL = f"{_OLLAMA_HOST}/api/generate"
 OLLAMA_BASE_URL = _OLLAMA_HOST
 
-# Primary tagging model — configurable via env var.
-# llama3.1:8b is the right fit: JSON extraction/classification at 4.7 GB GPU,
-# 3–5 s per doc. Fallback list tried in order if primary fails or is not pulled.
+# Tagging LLM configuration — optional, can be disabled to save GPU VRAM.
+# If USE_OLLAMA_TAGGING=false, skips Ollama entirely and uses rule-based tagging.
+# Otherwise, tries _PRIMARY_MODEL (default: llama3.1:8b) then fallbacks.
+_USE_OLLAMA = os.environ.get("USE_OLLAMA_TAGGING", "true").lower() != "false"
 _PRIMARY_MODEL  = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
 _FALLBACK_MODELS = ["llama3", "phi3"]
 
@@ -1023,11 +1024,23 @@ async def _call_ollama(model: str, payload: dict) -> dict | None:
 
 async def extract_ai_metadata(text_sample: str, filename: str = "") -> dict:
     """
-    Calls Ollama (llama3 → phi3 fallback) under a global asyncio lock.
-    Rule-based tags are used as fallback AND to clean up weak LLM output.
+    Generate document metadata (summary, tags, findings).
+    Tries Ollama LLM if enabled (USE_OLLAMA_TAGGING=true, default).
+    Falls back to rule-based extraction always available.
     """
-    # Pre-compute rule-based tags so we can use them as fallback immediately
+    # Pre-compute rule-based tags (fast, always available, no GPU needed)
     rb_tags = _rule_based_tags(filename, text_sample)
+    rb_summary = _rule_based_summary(filename, text_sample)
+
+    # If Ollama tagging is disabled, return rule-based only
+    if not _USE_OLLAMA:
+        logger.info("Ollama tagging disabled (USE_OLLAMA_TAGGING=false) — using rule-based only")
+        return {
+            "summary": rb_summary,
+            "tags": rb_tags,
+            "key_findings": _extract_content_keywords(text_sample, n=3),
+            "entities": {"Companies": [], "Dates": [], "Project_Names": []},
+        }
 
     prompt = f"""You are an expert academic document librarian. Analyze the document excerpt below.
 
@@ -1083,8 +1096,6 @@ Document excerpt:
             logger.warning(f"Model {model} returned unusable result, trying next…")
     finally:
         ollama_lock.release()
-
-    rb_summary = _rule_based_summary(filename, text_sample)
 
     if not result or not isinstance(result, dict):
         return {**_DEFAULT_METADATA, "tags": rb_tags, "summary": rb_summary}
