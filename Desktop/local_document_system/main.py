@@ -1,10 +1,17 @@
 import asyncio
 import json
+import logging
 import os
 import shutil
 import sqlite3
 import uuid
 from contextlib import asynccontextmanager
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -124,7 +131,7 @@ def init_db():
         cursor.execute(
             "INSERT OR REPLACE INTO db_meta (key, value) VALUES ('schema_version', '2')"
         )
-        print(
+        logger.info(
             f"FTS table migrated to porter tokenizer "
             f"({len(existing_fts)} documents re-indexed)."
         )
@@ -180,35 +187,39 @@ def _apply_rule_based_retag(conn) -> int:
 async def lifespan(app: FastAPI):
     init_db()
 
-    # Fix documents that got 'Uncategorized' because Ollama was down at ingest time
+    # ChromaDB startup health check — catches corrupt seq_id metadata before first search
+    try:
+        collection = get_chroma_collection()
+        _ = collection.count()
+        logger.info(f"ChromaDB healthy: {_} chunks in vector store.")
+    except Exception as chroma_err:
+        logger.error(
+            f"ChromaDB health check failed: {chroma_err}. "
+            "Run: rm -rf ./vector_store  then restart to recover."
+        )
+
     conn = get_db_connection()
     fixed = _apply_rule_based_retag(conn)
     conn.close()
     if fixed:
-        print(f"Auto-retagged {fixed} documents using rule-based tagger.")
+        logger.info(f"Auto-retagged {fixed} documents using rule-based tagger.")
 
-    # Warn if the embedding model has changed since last run (search quality degrades
-    # when queries use a different model than the stored vectors)
     if not check_model_version_match():
-        print(
-            f"\nWARNING: Embedding model changed to '{EMBEDDING_MODEL_NAME}'. "
+        logger.warning(
+            f"Embedding model changed to '{EMBEDDING_MODEL_NAME}'. "
             "Existing search results will be inaccurate until you call POST /reset "
-            "or POST /migrate-to-cosine (which also re-embeds with the new model). "
-            "New uploads will use the new model immediately.\n"
+            "or POST /migrate-to-cosine. New uploads will use the new model immediately."
         )
 
     ollama = await check_ollama_availability()
     if not ollama["available"]:
-        print(f"\nWARNING: {ollama['warning']}\n")
+        logger.warning(ollama["warning"])
     elif ollama.get("warning"):
-        print(f"\nWARNING: {ollama['warning']}\n")
+        logger.warning(ollama["warning"])
     else:
-        print(f"Ollama ready. Available models: {', '.join(ollama['models'])}")
+        logger.info(f"Ollama ready. Available models: {', '.join(ollama['models'])}")
 
-    # Pre-load the OCR engine so the first scanned document doesn't pay
-    # model-download latency and so startup failures are visible immediately.
-    # Runs in a thread because model loading is CPU/IO-bound.
-    print("Pre-loading OCR engine…")
+    logger.info("Pre-loading OCR engine…")
     await asyncio.to_thread(warm_up_ocr)
 
     yield  # Application is running
@@ -283,26 +294,30 @@ async def background_ingest_task(file_path: str, doc_id: str):
         chunks = chunk_document(pages_content)
 
         if len(chunks) > MAX_CHUNKS_PER_DOC:
-            print(
+            logger.warning(
                 f"{filename}: {len(chunks)} chunks exceeds cap of {MAX_CHUNKS_PER_DOC}. "
-                f"Indexing first {MAX_CHUNKS_PER_DOC} chunks only. "
-                f"Raise MAX_CHUNKS_PER_DOC env var to index the full document."
+                f"Indexing first {MAX_CHUNKS_PER_DOC} chunks only."
             )
             chunks = chunks[:MAX_CHUNKS_PER_DOC]
 
         if chunks:
             chunk_texts = [c["text"] for c in chunks]
             _set_progress(doc_id, "embedding", 76, f"Generating vectors for {len(chunks)} chunks…")
+            from embeddings import EMBEDDING_BATCH_SIZE
             model = get_embedding_model()
             import numpy as np
-            embeddings_ndarray = await asyncio.to_thread(model.encode, chunk_texts)
+            embeddings_ndarray = await asyncio.to_thread(
+                model.encode, chunk_texts,
+                batch_size=EMBEDDING_BATCH_SIZE,
+                show_progress_bar=False,
+            )
 
             # Guard: filter out any NaN/Inf embeddings (can occur on near-empty or
             # whitespace-only chunks after normalization produces a zero-norm vector)
             valid_mask = np.all(np.isfinite(embeddings_ndarray), axis=1)
             if not np.all(valid_mask):
                 bad = int((~valid_mask).sum())
-                print(f"{os.path.basename(file_path)}: dropping {bad} chunk(s) with NaN/Inf embeddings")
+                logger.warning(f"{os.path.basename(file_path)}: dropping {bad} chunk(s) with NaN/Inf embeddings")
                 chunks      = [c for c, v in zip(chunks, valid_mask) if v]
                 chunk_texts = [t for t, v in zip(chunk_texts, valid_mask) if v]
                 embeddings_ndarray = embeddings_ndarray[valid_mask]
@@ -350,12 +365,12 @@ async def background_ingest_task(file_path: str, doc_id: str):
 
         conn.commit()
         _ingest_progress.pop(doc_id, None)
-        print(f"Successfully processed: {filename}")
+        logger.info(f"Successfully processed: {filename}")
 
     except Exception as exc:
         conn.rollback()
         error_msg = str(exc)
-        print(f"Ingestion failed for {file_path}: {error_msg}")
+        logger.error(f"Ingestion failed for {file_path}: {error_msg}")
         _ingest_progress.pop(doc_id, None)
         cursor.execute(
             "UPDATE documents SET status='failed', error_message=? WHERE id=?",

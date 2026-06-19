@@ -24,7 +24,7 @@ from indexer import get_db_connection
 # ms-marco-MiniLM-L-6-v2 benchmarks:
 #   MRR@10 = 39.0 on MS MARCO Passage (vs 40.1 for L-12 at 3× slower).
 #   ~3 ms per (query, passage) pair on CPU — negligible for 15 candidates.
-_CE_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+_CE_MODEL_NAME = "BAAI/bge-reranker-large"
 _cross_encoder = None   # None = not yet loaded; False = load failed (no retry)
 
 
@@ -85,8 +85,8 @@ _STOPWORDS: frozenset[str] = frozenset({
 #   export RRF_KW_WEIGHT=1.0 RRF_SEM_WEIGHT=1.0  ← symmetric (original behaviour)
 #   export RRF_KW_WEIGHT=2.0 RRF_SEM_WEIGHT=0.5  ← more aggressive BM25 boost
 RRF_K          = 60
-RRF_KW_WEIGHT  = float(os.getenv("RRF_KW_WEIGHT",  "1.5"))
-RRF_SEM_WEIGHT = float(os.getenv("RRF_SEM_WEIGHT", "0.5"))
+RRF_KW_WEIGHT  = float(os.getenv("RRF_KW_WEIGHT",  "0.6"))
+RRF_SEM_WEIGHT = float(os.getenv("RRF_SEM_WEIGHT", "0.4"))
 
 
 def get_document_metadata(doc_id: str) -> dict | None:
@@ -177,7 +177,7 @@ def _fts_keyword_ranks(query_text: str) -> dict[str, int]:
         conn.close()
 
 
-def hybrid_search(query_text: str, limit: int = 5) -> list[dict]:
+def hybrid_search(query_text: str, limit: int = 10) -> list[dict]:
     """
     Hybrid search: vector similarity (ChromaDB) + BM25 keyword (SQLite FTS5),
     fused via Weighted Reciprocal Rank Fusion.

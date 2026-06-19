@@ -9,15 +9,19 @@ pymupdf>=1.24.0               # PDF text extraction + table detection
 python-docx>=1.1.0            # DOCX paragraph + table extraction
 
 # ── OCR ───────────────────────────────────────────────────────────────────────
-paddlepaddle>=3.0.0           # PaddleOCR runtime framework (CPU)
-paddleocr>=3.5.0              # PP-OCRv5 server model (primary OCR engine)
+paddlepaddle-gpu>=3.0.0       # PaddleOCR runtime framework (GPU/CUDA)
+paddleocr>=3.5.0              # PP-OCRv5 server models (primary OCR engine)
 pytesseract>=0.3.10           # Tesseract 5 wrapper (ensemble fallback)
-pillow>=10.0.0                # Image preprocessing (greyscale, autocontrast, binarise)
+pillow>=10.0.0                # Image preprocessing
 opencv-python>=4.8.0          # Image utilities required by PaddleOCR
 
+# ── PyTorch (CUDA 12.1) ───────────────────────────────────────────────────────
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch>=2.3.0
+
 # ── Embeddings + vector store ─────────────────────────────────────────────────
-sentence-transformers>=3.0.0  # BAAI/bge-base-en-v1.5 bi-encoder + MS-MARCO cross-encoder
-chromadb>=0.5.0               # HNSW cosine vector store
+sentence-transformers>=3.0.0  # BAAI/bge-m3 bi-encoder + bge-reranker-large
+chromadb>=0.5.0,<0.6.0        # pinned: prevents seq_id corruption from version drift
 
 # ── Keyword extraction ────────────────────────────────────────────────────────
 yake                          # Statistical keyphrase extraction (YAKE 2020)

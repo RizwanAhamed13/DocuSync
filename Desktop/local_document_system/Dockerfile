@@ -1,6 +1,6 @@
-FROM python:3.11-slim
+FROM pytorch/pytorch:2.3.0-cuda12.1-cudnn8-runtime
 
-# System dependencies: Tesseract + OpenCV + build tools
+# System dependencies: Tesseract + OpenCV + curl
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     tesseract-ocr-eng \
@@ -17,12 +17,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pre-download BGE embedding model + cross-encoder at build time
-# so first startup is instant on new machine
+# Pre-download BGE-M3 + bge-reranker-large at build time (no cold-start delay)
 RUN python -c "\
 from sentence_transformers import SentenceTransformer, CrossEncoder; \
-SentenceTransformer('BAAI/bge-base-en-v1.5'); \
-CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2'); \
+SentenceTransformer('BAAI/bge-m3'); \
+CrossEncoder('BAAI/bge-reranker-large'); \
 print('Models cached.')"
 
 # Copy application code
@@ -34,6 +33,9 @@ RUN mkdir -p uploads vector_store
 
 ENV PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
 ENV PYTHONUNBUFFERED=1
+ENV EMBEDDING_MODEL=BAAI/bge-m3
+ENV EMBEDDING_DEVICE=cuda
+ENV EMBEDDING_BATCH_SIZE=32
 
 EXPOSE 8000
 

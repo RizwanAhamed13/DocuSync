@@ -819,8 +819,8 @@ def _is_tabular_text(text: str) -> bool:
 
 def chunk_document(
     pages_content: list[dict],
-    chunk_size: int = 900,
-    overlap_sentences: int = 2,
+    chunk_size: int = 1800,
+    overlap_sentences: int = 3,
 ) -> list[dict]:
     """
     Sentence-boundary-aware chunking with sentence-level sliding overlap.
