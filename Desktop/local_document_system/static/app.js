@@ -2,7 +2,11 @@
 let currentDocuments = [];
 let activeSearchHits = [];
 let activeTag = null;
+let activeDocType = null;     // 'syllabus' | 'notes' | 'assign' | null
 let pollingInterval = null;
+let sidebarOpen = true;
+let drawerOpen = true;
+let currentView = 'lib';     // 'lib' | 'search'
 
 // Per-document ingestion progress
 const ingestProgress  = {};   // docId → {step, pct, detail, status}
@@ -40,6 +44,9 @@ const STEP_ETA = {
     saving:     '~2s',
 };
 
+// Global variable to track click handler attachment
+let resultsClickHandlerAttached = false;
+
 // DOM Elements
 const dropzone = document.getElementById("dropzone");
 const fileInput = document.getElementById("fileInput");
@@ -60,25 +67,201 @@ const API_BASE = "";
 document.addEventListener("DOMContentLoaded", () => {
     fetchDocuments();
     fetchTags();
+    fetchCounts();
     setupDropzone();
     setupSearch();
+    setupPanelToggles();
     startPolling();
+
+    // Wire the inline setRailView to also update currentView + library display
+    const _origSetRailView = window.setRailView;
+    window.setRailView = function(view) {
+        currentView = view;
+        if (_origSetRailView) _origSetRailView(view);
+        // Ensure sidebar is ALWAYS open for tag browsing
+        sidebarOpen = true;
+        const sidebar = document.querySelector(".sidebar");
+        if (sidebar) sidebar.classList.remove("collapsed");
+        if (view === 'lib') renderLibraryView();
+        if (view === 'tags') {
+            renderTagDirectory();
+        }
+    };
 });
+
+// ── Panel collapse / expand ───────────────────────────────────────────────────
+function setupPanelToggles() {
+    // New HTML already has sb-collapse-tab and drawerToggleBtn wired — skip injection.
+    // Only inject legacy compat styles for app.js-generated elements.
+    if (!document.getElementById("panelToggleStyles")) {
+        const style = document.createElement("style");
+        style.id = "panelToggleStyles";
+        style.textContent = `
+            .panel-toggle-btn {
+                position: fixed;
+                top: 50%;
+                transform: translateY(-50%);
+                width: 22px;
+                height: 48px;
+                border: 1px solid var(--border-color, #2a2a2a);
+                border-radius: 6px;
+                background: var(--bg-secondary, #1a1a1a);
+                color: var(--text-muted, #888);
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 11px;
+                z-index: 100;
+                transition: background 0.15s, color 0.15s, opacity 0.15s;
+                opacity: 0.55;
+            }
+            .panel-toggle-btn:hover { opacity: 1; color: #fff; }
+            .panel-toggle-left  { left: 0px; border-radius: 0 6px 6px 0; border-left: none; }
+            .panel-toggle-right { right: 0px; border-radius: 6px 0 0 6px; border-right: none; }
+
+            .sidebar { transition: width 0.25s cubic-bezier(.4,0,.2,1), opacity 0.2s; overflow: hidden; }
+            .sidebar.collapsed { width: 0 !important; opacity: 0; pointer-events: none; }
+
+            .col-inspector, #inspectorColumn {
+                transition: width 0.25s cubic-bezier(.4,0,.2,1), opacity 0.2s;
+                overflow: hidden;
+            }
+            .col-inspector.collapsed, #inspectorColumn.collapsed {
+                width: 0 !important;
+                opacity: 0;
+                pointer-events: none;
+            }
+
+            /* Tag directory grouped sections */
+            .tag-group-section { margin-bottom: 8px; }
+            .tag-group-label {
+                font-size: 9px;
+                font-weight: 700;
+                letter-spacing: 0.9px;
+                text-transform: uppercase;
+                color: var(--text-muted, #666);
+                padding: 6px 8px 3px;
+                display: flex;
+                align-items: center;
+                gap: 5px;
+            }
+            .tag-group-label i { font-size: 10px; }
+
+            /* Library type filter nav */
+            .lib-type-nav { display: flex; flex-direction: column; gap: 1px; margin-bottom: 12px; }
+            .lib-type-item {
+                display: flex; align-items: center; gap: 8px;
+                padding: 6px 8px; border-radius: 6px;
+                font-size: 12px; color: var(--text-secondary, #aaa);
+                cursor: pointer;
+                transition: background 0.12s, color 0.12s, transform 0.15s cubic-bezier(.34,1.56,.64,1);
+            }
+            .lib-type-item:hover { background: var(--bg-hover, #222); transform: translateX(2px); }
+            .lib-type-item.active { background: var(--bg-active, #2a2a2a); color: #fff; }
+            .lib-type-item i { font-size: 14px; width: 16px; text-align: center; flex-shrink: 0; }
+            .lib-type-badge { margin-left: auto; font-size: 10px; background: var(--bg-secondary, #1a1a1a); padding: 1px 6px; border-radius: 10px; }
+
+            .lib-section-label {
+                font-size: 9px; font-weight: 700; letter-spacing: 0.9px;
+                text-transform: uppercase; color: var(--text-muted, #666);
+                padding: 8px 8px 4px; display: block;
+            }
+
+            /* Visible collapse/expand buttons with accent color */
+            .sb-collapse-tab, .drawer-toggle-btn {
+                background: var(--accent, #b09060) !important;
+                color: #fff !important;
+                opacity: 0.8 !important;
+                transition: opacity 0.2s, transform 0.2s;
+            }
+            .sb-collapse-tab:hover, .drawer-toggle-btn:hover {
+                opacity: 1 !important;
+                transform: scale(1.1) !important;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    // Wire HTML collapse buttons
+    setTimeout(() => {
+        const sbTab = document.getElementById("sbCollapseTab");
+        if (sbTab) {
+            sbTab.addEventListener("click", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                sidebarOpen = !sidebarOpen;
+                const sidebar = document.querySelector(".sidebar");
+                if (sidebar) sidebar.classList.toggle("collapsed", !sidebarOpen);
+                sbTab.innerHTML = sidebarOpen
+                    ? '<i class="ti ti-chevron-left"></i>'
+                    : '<i class="ti ti-chevron-right"></i>';
+                sbTab.title = sidebarOpen ? "Collapse sidebar" : "Expand sidebar";
+                sbTab.style.right = sidebarOpen ? 'calc(var(--sb-w) + 8px)' : '8px';
+            });
+        }
+
+        const drawerBtn = document.getElementById("drawerToggleBtn");
+        if (drawerBtn) {
+            drawerBtn.addEventListener("click", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                drawerOpen = !drawerOpen;
+                const col = document.querySelector(".col-inspector");
+                if (col) col.classList.toggle("collapsed", !drawerOpen);
+                drawerBtn.innerHTML = drawerOpen
+                    ? '<i class="ti ti-chevron-right"></i>'
+                    : '<i class="ti ti-chevron-left"></i>';
+                drawerBtn.title = drawerOpen ? "Collapse inspector" : "Expand inspector";
+                drawerBtn.style.left = drawerOpen ? 'calc(var(--insp-w) * -1 - 12px)' : '-12px';
+            });
+        }
+    }, 100);
+}
+
+function toggleSidebar() {
+    sidebarOpen = !sidebarOpen;
+    const sidebar = document.querySelector(".sidebar");
+    const btn = document.getElementById("sidebarToggleBtn");
+    if (sidebar) sidebar.classList.toggle("collapsed", !sidebarOpen);
+    if (btn) {
+        btn.title = sidebarOpen ? "Collapse sidebar" : "Expand sidebar";
+        btn.innerHTML = sidebarOpen
+            ? '<i class="fa-solid fa-chevron-left"></i>'
+            : '<i class="fa-solid fa-chevron-right"></i>';
+        btn.style.left = sidebarOpen ? "0px" : "0px";
+    }
+}
+
+function toggleDrawer() {
+    drawerOpen = !drawerOpen;
+    const col = document.querySelector(".col-inspector") || document.getElementById("inspectorColumn");
+    const btn = document.getElementById("drawerToggleBtn");
+    if (col) col.classList.toggle("collapsed", !drawerOpen);
+    if (btn) {
+        btn.title = drawerOpen ? "Collapse inspector" : "Expand inspector";
+        btn.innerHTML = drawerOpen
+            ? '<i class="fa-solid fa-chevron-right"></i>'
+            : '<i class="fa-solid fa-chevron-left"></i>';
+    }
+}
 
 // Toast Notification Helper
 function showToast(message, isSpinner = false) {
     toastMessage.textContent = message;
-    
-    // Remove existing spinners
-    const existingSpinner = toast.querySelector(".spinner");
-    if (existingSpinner) existingSpinner.remove();
+
+    // Find the inner container (new layout wraps in .toast-inner)
+    const inner = toast.querySelector(".toast-inner") || toast;
+
+    // Remove existing spinners/icons
+    inner.querySelectorAll(".spinner, .toast-icon").forEach(el => el.remove());
 
     if (isSpinner) {
         const spinner = document.createElement("div");
         spinner.className = "spinner";
-        toast.insertBefore(spinner, toast.firstChild);
+        inner.insertBefore(spinner, inner.firstChild);
     }
-    
+
     toast.classList.remove("hidden");
     if (!isSpinner) {
         setTimeout(() => {
@@ -128,13 +311,17 @@ async function handleFilesUpload(files) {
         formData.append("file", file);
 
         try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 60000);
             const response = await fetch(`${API_BASE}/upload`, {
                 method: "POST",
-                body: formData
+                body: formData,
+                signal: controller.signal
             });
+            clearTimeout(timer);
 
             if (!response.ok) {
-                const err = await response.json();
+                const err = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }));
                 throw new Error(err.detail || "Upload failed");
             }
 
@@ -159,16 +346,20 @@ async function handleFilesUpload(files) {
     startPolling();
 }
 
-// Fetch Documents
+// Fetch Documents (supports active doc_type and tag filters)
 async function fetchDocuments() {
     try {
-        const response = await fetch(`${API_BASE}/documents`);
+        const params = new URLSearchParams();
+        if (activeDocType) params.set("type", activeDocType);
+        if (activeTag)     params.set("tag",  activeTag);
+        const qs = params.toString() ? "?" + params.toString() : "";
+        const response = await fetch(`${API_BASE}/documents${qs}`);
         if (!response.ok) throw new Error("Could not load documents");
         currentDocuments = await response.json();
         renderFileList();
         updateDashboardStats();
-        
-        // Stop polling if no files are in processing state
+        if (currentView === 'lib') renderLibraryView();
+
         const anyProcessing = currentDocuments.some(doc => doc.status === "processing");
         if (!anyProcessing && pollingInterval) {
             clearInterval(pollingInterval);
@@ -180,16 +371,45 @@ async function fetchDocuments() {
     }
 }
 
-// Fetch Tags
+// Fetch and render grouped tags
 async function fetchTags() {
     try {
         const response = await fetch(`${API_BASE}/tags`);
         if (!response.ok) throw new Error("Could not load tags");
-        const tags = await response.json();
-        renderTagCloud(tags);
+        const data = await response.json();
+        // New API returns {flat, grouped}; old API returns array
+        if (Array.isArray(data)) {
+            renderTagCloud(data, null);
+        } else {
+            currentTagsGrouped = data.grouped || {};
+            renderTagCloud(data.flat, data.grouped);
+            // Re-render tag directory if in tags view
+            if (currentView === 'tags') renderTagDirectory();
+        }
     } catch (error) {
         console.error(error);
     }
+}
+
+// Fetch sidebar type-counts and update badges
+async function fetchCounts() {
+    try {
+        const r = await fetch(`${API_BASE}/documents/counts`);
+        if (!r.ok) return;
+        const counts = await r.json();
+        const map = { all: "statAll", syllabus: "statSyllabus", notes: "statNotes", assign: "statAssign" };
+        for (const [key, elId] of Object.entries(map)) {
+            const el = document.getElementById(elId);
+            if (el) el.textContent = counts[key] ?? 0;
+        }
+        // Also update existing dashboard counters
+        const c = document.getElementById("statCompleted");
+        const p = document.getElementById("statProcessing");
+        const f = document.getElementById("statFailed");
+        if (c) c.textContent = counts.all ?? 0;
+        if (p) p.textContent = counts.processing ?? 0;
+        if (f) f.textContent = counts.failed ?? 0;
+    } catch (_) {}
 }
 
 // Setup Polling for Ingestion Status
@@ -198,7 +418,8 @@ function startPolling() {
     pollingInterval = setInterval(() => {
         fetchDocuments();
         fetchTags();
-    }, 3000);
+        fetchCounts();
+    }, 5000);
 }
 
 // ── Per-document granular progress polling ────────────────────────
@@ -206,7 +427,10 @@ function startProgressPolling(docId) {
     if (progressPollers[docId]) return;
     progressPollers[docId] = setInterval(async () => {
         try {
-            const resp = await fetch(`/documents/${docId}/status`);
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 8000);
+            const resp = await fetch(`/documents/${docId}/status`, { signal: controller.signal });
+            clearTimeout(timer);
             if (!resp.ok) return;
             const data = await resp.json();
 
@@ -220,8 +444,8 @@ function startProgressPolling(docId) {
                 await fetchDocuments();
                 await fetchTags();
             }
-        } catch (_) { /* ignore network blips */ }
-    }, 900);
+        } catch (_) { /* ignore network blips and aborts */ }
+    }, 2500);
 }
 
 function stopProgressPolling(docId) {
@@ -364,35 +588,319 @@ function renderFileList() {
     });
 }
 
-// Render Tag Cloud
-function renderTagCloud(tags) {
+// Render Tag Cloud — supports both flat array and grouped object
+function renderTagCloud(flatTags, grouped) {
     tagCloud.innerHTML = "";
-    
-    if (tags.length === 0) {
-        tagCloud.innerHTML = '<p class="empty-state">No tags generated yet.</p>';
+
+    // ── Library type filter nav (inject above tag cloud once) ──────────────
+    let libNav = document.getElementById("libTypeNav");
+    if (!libNav) {
+        libNav = document.createElement("div");
+        libNav.id = "libTypeNav";
+        libNav.className = "lib-type-nav";
+        tagCloud.parentElement.insertBefore(libNav, tagCloud);
+    }
+    // Hide library nav in Tags view, show in Library view
+    libNav.style.display = currentView === 'tags' ? 'none' : 'flex';
+    libNav.style.flexDirection = 'column';
+    libNav.innerHTML = `
+        <span class="lib-section-label">Library</span>
+        <div class="lib-type-item ${!activeDocType ? 'active' : ''}" onclick="setDocType(null,this)">
+            <i class="fa-solid fa-layer-group"></i> All documents
+            <span class="lib-type-badge" id="statAll">—</span>
+        </div>
+        <div class="lib-type-item ${activeDocType==='syllabus' ? 'active' : ''}" onclick="setDocType('syllabus',this)">
+            <i class="fa-solid fa-book-open"></i> Syllabi
+            <span class="lib-type-badge" id="statSyllabus">—</span>
+        </div>
+        <div class="lib-type-item ${activeDocType==='notes' ? 'active' : ''}" onclick="setDocType('notes',this)">
+            <i class="fa-solid fa-file-lines"></i> Lecture Notes
+            <span class="lib-type-badge" id="statNotes">—</span>
+        </div>
+        <div class="lib-type-item ${activeDocType==='assign' ? 'active' : ''}" onclick="setDocType('assign',this)">
+            <i class="fa-solid fa-clipboard-list"></i> Assignments
+            <span class="lib-type-badge" id="statAssign">—</span>
+        </div>
+    `;
+    fetchCounts();
+
+    if (!flatTags || flatTags.length === 0) {
+        tagCloud.innerHTML = '<p class="empty-state">No tags yet</p>';
         return;
     }
 
-    tags.forEach(tag => {
-        const badge = document.createElement("div");
-        badge.className = `tag-badge ${activeTag === tag.name ? 'active' : ''}`;
-        badge.innerHTML = `${tag.name} <span>${tag.count}</span>`;
-        
-        badge.addEventListener("click", () => {
-            if (activeTag === tag.name) {
-                activeTag = null;
-            } else {
-                activeTag = tag.name;
-                // Auto populate search box to help users understand they can query by tag
-                searchInput.value = `tag:${tag.name} `;
-                searchInput.focus();
+    // ── Build grouped structure from flat array if grouped is empty ──────────
+    let finalGrouped = grouped;
+    if (!grouped || typeof grouped !== "object" || Object.keys(grouped).length === 0) {
+        finalGrouped = { subject: [], doc_type: [], level: [], term: [] };
+        const DOC_TYPE_SET = new Set(["Syllabus", "Course Syllabus", "Lecture Notes", "Lab Report", "Lab Notes", "Assignment", "Final Exam", "Midterm Exam", "Exam / Quiz", "Question Bank", "Homework", "Project"]);
+        const LEVEL_WORDS = new Set(["Graduate","Doctoral","Undergraduate","Upper","Sophomore","Introductory","Advanced"]);
+        const TERM_RE = /^(Spring|Fall|Summer|Winter)\s+\d{4}$/i;
+
+        flatTags.forEach(tag => {
+            const cat = tag.category || 'subject';
+            if (finalGrouped[cat]) {
+                finalGrouped[cat].push(tag);
             }
-            fetchTags();
-            renderFileList();
         });
-        
-        tagCloud.appendChild(badge);
+    }
+
+    // ── Grouped tag directory ──────────────────────────────────────────────
+    const GROUP_META = {
+        subject:  { icon: "fa-atom",       label: "Subject" },
+        doc_type: { icon: "fa-file-check", label: "Document type" },
+        level:    { icon: "fa-graduation-cap", label: "Level" },
+        term:     { icon: "fa-calendar",  label: "Term" },
+    };
+
+    let hasAnyTags = false;
+    for (const [key, meta] of Object.entries(GROUP_META)) {
+        const items = finalGrouped[key] || [];
+        if (items.length === 0) continue;
+        hasAnyTags = true;
+
+        const section = document.createElement("div");
+        section.className = "tag-group-section";
+
+        // Add section header
+        const headerDiv = document.createElement("div");
+        headerDiv.className = "tag-group-label";
+        headerDiv.innerHTML = `<i class="fa-solid ${meta.icon}"></i> ${meta.label}`;
+        headerDiv.style.display = 'flex';
+        headerDiv.style.visibility = 'visible';
+        section.appendChild(headerDiv);
+
+        // Add tags
+        items.forEach(tag => {
+            const badge = document.createElement("div");
+            badge.className = `tag-badge ${activeTag === tag.name ? 'active' : ''}`;
+            badge.innerHTML = `${tag.name} <span>${tag.count}</span>`;
+            badge.style.display = 'flex';
+            badge.style.visibility = 'visible';
+            badge.addEventListener("click", () => selectTag(tag.name));
+            section.appendChild(badge);
+        });
+        tagCloud.appendChild(section);
+    }
+
+    if (!hasAnyTags) {
+        tagCloud.innerHTML = '<p class="empty-state">No tags yet</p>';
+    }
+}
+
+// ── Library view: render docs as cards in main results panel ──────────────
+function renderLibraryView() {
+    const label = activeTag
+        ? `Tagged: ${activeTag}`
+        : activeDocType === 'syllabus' ? 'Syllabi'
+        : activeDocType === 'notes'    ? 'Lecture Notes'
+        : activeDocType === 'assign'   ? 'Assignments'
+        : 'All Documents';
+
+    // Filter: API already filters by type/tag, but also filter client-side for tag display
+    let completed = currentDocuments.filter(d => d.status === 'completed');
+    if (activeTag) {
+        completed = completed.filter(doc => (doc.tags || []).includes(activeTag));
+    }
+    resultsCount.textContent = `${completed.length} docs`;
+
+    if (completed.length === 0) {
+        searchResults.innerHTML = `
+            <div class="empty-card">
+                <i class="fa-solid fa-inbox empty-icon"></i>
+                <p class="empty-title">No documents in ${label}</p>
+                <p class="empty-sub">Upload a PDF, DOCX or TXT to get started — AI tagging runs automatically.</p>
+            </div>`;
+        return;
+    }
+
+    // Build HTML string once instead of creating DOM elements
+    let htmlContent = '';
+    completed.forEach((doc, idx) => {
+        const fileIcon = doc.filename.toLowerCase().endsWith('.pdf') ? 'fa-file-pdf'
+                       : doc.filename.toLowerCase().endsWith('.docx') ? 'fa-file-word'
+                       : 'fa-file-lines';
+
+        const tagsHtml = (doc.tags || []).slice(0, 4)
+            .map(t => `<span class="result-tag-badge">#${t}</span>`).join(" ");
+
+        const summary = (doc.summary || "No summary available.").replace(/\s+/g, " ").trim();
+        const sizeKb = doc.file_size_bytes ? (doc.file_size_bytes / 1024).toFixed(1) + ' KB' : '';
+        const pages = doc.page_count ? `${doc.page_count} pg${doc.page_count !== 1 ? 's' : ''}` : '';
+        const meta = [pages, sizeKb].filter(Boolean).join(' · ');
+
+        const docTypeLabel = doc.doc_type && doc.doc_type !== 'other'
+            ? `<span class="result-score" style="background:var(--blue-dim);color:var(--blue);">${doc.doc_type}</span>`
+            : '';
+
+        htmlContent += `
+            <div class="result-card" data-doc-id="${doc.id}">
+                <div class="result-header">
+                    <div class="result-doc-name">
+                        <i class="fa-solid ${fileIcon}"></i>
+                        <span>${doc.filename}</span>
+                    </div>
+                    <div class="result-meta">
+                        ${docTypeLabel}
+                        <span class="result-page">${meta}</span>
+                    </div>
+                </div>
+                <div class="result-snippet">${summary}</div>
+                <div class="result-tags">${tagsHtml}</div>
+            </div>`;
     });
+
+    searchResults.innerHTML = htmlContent;
+
+    // Attach click handler once using event delegation
+    if (!resultsClickHandlerAttached) {
+        searchResults.addEventListener("click", (e) => {
+            const card = e.target.closest(".result-card");
+            if (!card) return;
+
+            document.querySelectorAll(".result-card").forEach(c => c.classList.remove("active"));
+            card.classList.add("active");
+
+            const docId = card.getAttribute("data-doc-id");
+            const doc = currentDocuments.find(d => d.id === docId);
+            if (doc) renderDocInspector(doc);
+        });
+        resultsClickHandlerAttached = true;
+    }
+}
+
+// ── Inspector for library doc view ────────────────────────────────────────
+function renderDocInspector(doc) {
+    const fileIcon = doc.filename.toLowerCase().endsWith('.pdf') ? 'fa-file-pdf'
+                   : doc.filename.toLowerCase().endsWith('.docx') ? 'fa-file-word'
+                   : 'fa-file-lines';
+
+    const tagsHtml = (doc.tags || []).map(t =>
+        `<span class="tag-badge" style="cursor:default;">#${t}</span>`).join(" ");
+
+    const findingsHtml = (doc.key_findings || []).length > 0
+        ? doc.key_findings.map(f => `<li>${escapeHtml(f)}</li>`).join("")
+        : '<li style="color:var(--ink4)">No key findings extracted.</li>';
+
+    const dates = (doc.entities?.Dates || []);
+    const datesHtml = dates.length > 0
+        ? dates.map(d => `<span class="entity-badge">${d}</span>`).join("")
+        : '<span style="color:var(--ink4);font-size:11px">None detected</span>';
+
+    inspectorPanel.innerHTML = `
+        <div class="inspector-title">
+            <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+                <i class="fa-solid ${fileIcon}"></i>
+                <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${doc.filename}</span>
+            </div>
+            <div style="display:flex;gap:6px;flex-shrink:0;">
+                <a class="btn btn-primary" href="/documents/${doc.id}/download" target="_blank"
+                   style="font-size:11px;padding:4px 10px;text-decoration:none;">
+                    <i class="fa-solid fa-download"></i> Download
+                </a>
+                <button class="btn btn-primary" style="font-size:11px;padding:4px 10px;"
+                    onclick="viewFullDocument('${doc.id}','${doc.filename.replace(/'/g,"\\'")}')">
+                    <i class="fa-solid fa-expand"></i> View
+                </button>
+            </div>
+        </div>
+
+        <div class="inspector-section">
+            <h4><i class="fa-solid fa-wand-magic-sparkles"></i> AI Summary</h4>
+            <p class="inspector-summary">${escapeHtml(doc.summary || 'No summary available.')}</p>
+        </div>
+
+        <div class="inspector-section">
+            <h4><i class="fa-solid fa-circle-check"></i> Key Findings</h4>
+            <ul class="findings-list">${findingsHtml}</ul>
+        </div>
+
+        <div class="inspector-section">
+            <h4><i class="fa-solid fa-calendar"></i> Dates Mentioned</h4>
+            <div class="entity-list">${datesHtml}</div>
+        </div>
+
+        <div class="inspector-section">
+            <h4><i class="fa-solid fa-tags"></i> Tags</h4>
+            <div class="inspector-tags">${tagsHtml}</div>
+        </div>
+    `;
+}
+
+// ── Tag directory view: show all tags organized by category ──────────────────
+function renderTagDirectory() {
+    resultsCount.textContent = "Tag Directory";
+
+    if (!Object.keys(currentTagsGrouped).length) {
+        searchResults.innerHTML = `
+            <div class="empty-card">
+                <i class="fa-solid fa-tags empty-icon"></i>
+                <p class="empty-title">No tags yet</p>
+                <p class="empty-sub">Upload documents to generate tags automatically.</p>
+            </div>`;
+        return;
+    }
+
+    const GROUP_META = {
+        subject:  { icon: "fa-atom",       label: "Subject" },
+        doc_type: { icon: "fa-file-check", label: "Document Type" },
+        level:    { icon: "fa-graduation-cap", label: "Level" },
+        term:     { icon: "fa-calendar",  label: "Term" },
+    };
+
+    let htmlContent = '';
+
+    for (const [key, meta] of Object.entries(GROUP_META)) {
+        const items = currentTagsGrouped[key] || [];
+        if (items.length === 0) continue;
+
+        htmlContent += `
+            <div style="margin-bottom: 28px;">
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--border2);">
+                    <i class="fa-solid ${meta.icon}" style="font-size:16px; color:var(--accent);"></i>
+                    <h3 style="font-size:14px; font-weight:600; color:var(--ink); margin:0;">${meta.label}</h3>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:10px;">`;
+
+        items.forEach(tag => {
+            htmlContent += `
+                <div style="padding:10px 12px; border:1px solid var(--border2); border-radius:8px; cursor:pointer; transition:all 0.1s; background:var(--surface2);"
+                     onclick="selectTag('${tag.name}'); return false;"
+                     onmouseover="this.style.borderColor='var(--accent)'; this.style.background='var(--accent-dim)';"
+                     onmouseout="this.style.borderColor='var(--border2)'; this.style.background='var(--surface2)';">
+                    <div style="font-size:12px; font-weight:500; color:var(--ink2); margin-bottom:4px;">${tag.name}</div>
+                    <div style="font-size:10px; color:var(--ink4); background:var(--bg); padding:2px 6px; border-radius:4px; display:inline-block;">${tag.count} doc${tag.count !== 1 ? 's' : ''}</div>
+                </div>`;
+        });
+
+        htmlContent += `</div></div>`;
+    }
+
+    searchResults.innerHTML = htmlContent;
+}
+
+// Store current tags for tag directory view
+let currentTagsGrouped = {};
+
+function selectTag(name) {
+    activeTag = activeTag === name ? null : name;
+    currentView = 'lib';
+    sidebarOpen = true;
+    const sidebar = document.querySelector(".sidebar");
+    if (sidebar) sidebar.classList.remove("collapsed");
+    fetchDocuments();
+    fetchTags();
+}
+
+function setDocType(type, el) {
+    activeDocType = type;
+    activeTag = null;
+    currentView = 'lib';
+    sidebarOpen = true;  // Ensure sidebar stays open when selecting doc type
+    const sidebar = document.querySelector(".sidebar");
+    if (sidebar) sidebar.classList.remove("collapsed");
+    fetchDocuments();
+    fetchTags();
 }
 
 // Setup Search Handlers
@@ -454,7 +962,7 @@ function renderSearchResults(highlightTerm) {
             <div class="welcome-card">
                 <i class="fa-solid fa-face-frown welcome-icon"></i>
                 <h3>No context matches found</h3>
-                <p>Try searching using different keywords or check if Ollama successfully processed the uploads.</p>
+                <p>Try different keywords or upload more documents to expand your library.</p>
             </div>
         `;
         return;
@@ -658,13 +1166,7 @@ async function deleteDocument(docId, event) {
 
 // Update Brand Dashboard Stats Counters
 function updateDashboardStats() {
-    const completed = currentDocuments.filter(doc => doc.status === "completed").length;
-    const processing = currentDocuments.filter(doc => doc.status === "processing").length;
-    const failed = currentDocuments.filter(doc => doc.status === "failed").length;
-    
-    document.getElementById("statCompleted").textContent = completed;
-    document.getElementById("statProcessing").textContent = processing;
-    document.getElementById("statFailed").textContent = failed;
+    fetchCounts();
 }
 
 // Full Document Viewer

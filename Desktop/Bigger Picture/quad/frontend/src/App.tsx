@@ -18,6 +18,8 @@ import FeedPage from './pages/FeedPage';
 import FacultyDashboard from './pages/FacultyDashboard';
 import HackathonPage from './pages/HackathonPage';
 
+import NotFoundPage from './pages/NotFoundPage';
+
 // Route Guard for authenticated routes
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isLoading } = useAuth();
@@ -174,7 +176,7 @@ export const App: React.FC = () => {
           />
 
           {/* Catch All */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

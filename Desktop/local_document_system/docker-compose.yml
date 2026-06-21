@@ -12,27 +12,23 @@ services:
       - ./document_metadata.db:/app/document_metadata.db
     environment:
       - PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
-      - OLLAMA_HOST=http://ollama:11434
-      # Optional: set your Colab GPU OCR URL here
-      # - COLAB_OCR_URL=https://xxxx.trycloudflare.com
-    depends_on:
-      ollama:
-        condition: service_healthy
+      - EMBEDDING_MODEL=Alibaba-NLP/gte-large-en-v1.5
+      - USE_OLLAMA_TAGGING=false
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama
+  docusync-nginx:
+    image: nginx:alpine
+    container_name: docusync-nginx
     restart: unless-stopped
     ports:
-      - "11434:11434"
+      - "80:80"
     volumes:
-      - ollama_data:/root/.ollama
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-
-volumes:
-  ollama_data:
+      - ./nginx:/etc/nginx/conf.d
+    depends_on:
+      - docusync

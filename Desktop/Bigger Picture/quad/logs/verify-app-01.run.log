@@ -1,0 +1,24 @@
+::1 - - [17/Jun/2026 10:02:07] code 404, message File not found
+::1 - - [17/Jun/2026 10:02:07] "GET / HTTP/1.1" 404 -
+::1 - - [17/Jun/2026 10:02:57] code 404, message File not found
+::1 - - [17/Jun/2026 10:02:57] "GET /index.html HTTP/1.1" 404 -
+::1 - - [17/Jun/2026 10:03:42] code 404, message File not found
+::1 - - [17/Jun/2026 10:03:42] "GET /? HTTP/1.1" 404 -
+::1 - - [17/Jun/2026 10:03:42] code 404, message File not found
+::1 - - [17/Jun/2026 10:03:42] "GET /index.html? HTTP/1.1" 404 -
+::1 - - [17/Jun/2026 10:03:50] code 404, message File not found
+::1 - - [17/Jun/2026 10:03:50] "GET /? HTTP/1.1" 404 -
+::1 - - [17/Jun/2026 10:03:56] code 404, message File not found
+::1 - - [17/Jun/2026 10:03:56] "GET /? HTTP/1.1" 404 -
+::1 - - [17/Jun/2026 10:04:03] code 404, message File not found
+::1 - - [17/Jun/2026 10:04:03] "GET / HTTP/1.1" 404 -
+::1 - - [17/Jun/2026 10:04:03] code 404, message File not found
+::1 - - [17/Jun/2026 10:04:03] "GET /index.html HTTP/1.1" 404 -
+::1 - - [17/Jun/2026 10:04:29] code 404, message File not found
+::1 - - [17/Jun/2026 10:04:29] "GET / HTTP/1.1" 404 -
+::1 - - [17/Jun/2026 10:04:41] code 404, message File not found
+::1 - - [17/Jun/2026 10:04:41] "GET / HTTP/1.1" 404 -
+::1 - - [17/Jun/2026 10:06:29] "GET / HTTP/1.1" 200 -
+::1 - - [17/Jun/2026 10:06:29] "GET /? HTTP/1.1" 200 -
+::1 - - [17/Jun/2026 10:06:54] "GET /? HTTP/1.1" 200 -
+::1 - - [17/Jun/2026 10:06:57] "GET /? HTTP/1.1" 200 -

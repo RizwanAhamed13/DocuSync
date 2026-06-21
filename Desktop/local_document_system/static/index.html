@@ -1,145 +1,298 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DocuSync - Local Semantic Search & Document Analyzer</title>
-    <!-- Google Fonts Outfit & Inter -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <!-- FontAwesome for Premium Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DocuSync</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="app-container">
-        <!-- Sidebar Navigation & Filters -->
-        <aside class="sidebar">
-            <div class="brand">
-                <i class="fa-solid fa-brain-circuit logo-icon"></i>
-                <div class="brand-text">
-                    <h1>DocuSync</h1>
-                    <span>100% Local RAG Engine</span>
-                </div>
-            </div>
+<div class="app-root">
 
-            <!-- Status Dashboard Widget -->
-            <div class="status-dashboard">
-                <div class="stat-card">
-                    <span class="stat-num" id="statCompleted">0</span>
-                    <span class="stat-label">Indexed</span>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-num" id="statProcessing">0</span>
-                    <span class="stat-label">Queued</span>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-num" id="statFailed">0</span>
-                    <span class="stat-label">Failed</span>
-                </div>
-            </div>
-
-            <!-- Upload Box -->
-            <div class="upload-section">
-                <h2>Upload Documents</h2>
-                <div id="dropzone" class="dropzone">
-                    <input type="file" id="fileInput" multiple accept=".pdf,.docx,.txt,.md,.json" style="display: none;">
-                    <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
-                    <p>Drag & Drop files here</p>
-                    <span>or click to browse</span>
-                </div>
-            </div>
-
-            <!-- Scrollable Sidebar Content -->
-            <div class="sidebar-scrollable">
-                <!-- Tags Filter Wall -->
-                <div class="filter-section">
-                    <h3><i class="fa-solid fa-tags"></i> Tag Explorer</h3>
-                    <div id="tagCloud" class="tag-cloud">
-                        <p class="empty-state">No tags available yet.</p>
-                    </div>
-                </div>
-
-                <!-- File List Panel -->
-                <div class="file-list-section">
-                    <h3><i class="fa-solid fa-folder-open"></i> Document Store</h3>
-                    <div id="fileList" class="file-list">
-                        <p class="empty-state">No documents uploaded.</p>
-                    </div>
-                </div>
-            </div>
-        </aside>
-
-        <!-- Main Workspace Area -->
-        <main class="main-workspace">
-            <!-- Top Search bar -->
-            <header class="workspace-header">
-                <div class="search-container">
-                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                    <input type="text" id="searchInput" placeholder="Search by meaning, keyword, or course code... (e.g., 'CS 568', 'attendance policy', 'chemistry')" autocomplete="off">
-                    <button id="searchButton" class="btn btn-primary">Search</button>
-                </div>
-            </header>
-
-            <!-- Grid Split View -->
-            <div class="workspace-body">
-                <!-- Search Results (Left Column) -->
-                <section class="results-column">
-                    <div class="section-header">
-                        <h2><i class="fa-solid fa-list-check"></i> Matching Contexts</h2>
-                        <span id="resultsCount" class="results-badge">0 Results</span>
-                    </div>
-                    <div id="searchResults" class="search-results-list">
-                        <div class="welcome-card">
-                            <i class="fa-solid fa-arrow-pointer welcome-icon"></i>
-                            <h3>Upload a document and start searching</h3>
-                            <p>DocuSync extracts your text, tags topics using local AI, and indexing into a semantic vector store.</p>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Document Inspector & Highlights (Right Column) -->
-                <section class="inspector-column">
-                    <div class="section-header">
-                        <h2><i class="fa-solid fa-magnifying-glass-chart"></i> Document Inspector</h2>
-                    </div>
-                    <div id="inspectorPanel" class="inspector-panel">
-                        <div class="empty-inspector">
-                            <i class="fa-solid fa-eye empty-icon"></i>
-                            <h3>Select a search result to inspect details</h3>
-                            <p>Click on any text match card on the left to read context, summaries, and extracted key takeaways.</p>
-                        </div>
-                    </div>
-                </section>
-            </div>
-        </main>
+  <!-- ── Icon Rail ─────────────────────────────────────────── -->
+  <div class="rail" id="appRail">
+    <div class="rail-logo" title="DocuSync">
+      <i class="ti ti-files"></i>
     </div>
 
-    <!-- Notification Toast -->
-    <div id="toast" class="toast hidden">
-        <i class="fa-solid fa-info-circle toast-icon"></i>
-        <span id="toastMessage">File processing started...</span>
+    <div class="rail-item active" id="railLib" onclick="setRailView('lib')" title="Library">
+      <i class="ti ti-layout-list"></i>
+      <span>Library</span>
+    </div>
+    <div class="rail-item" id="railSearch" onclick="setRailView('search')" title="Search">
+      <i class="ti ti-search"></i>
+      <span>Search</span>
+    </div>
+    <div class="rail-item" id="railTags" onclick="setRailView('tags')" title="Tags">
+      <i class="ti ti-tag"></i>
+      <span>Tags</span>
+    </div>
+    <div class="rail-item" id="railUpload" onclick="openUploadSheet()" title="Upload">
+      <i class="ti ti-upload"></i>
+      <span>Upload</span>
     </div>
 
-    <!-- Full Document Modal -->
-    <div id="fullDocModal" class="modal hidden">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="modalTitle"><i class="fa-solid fa-file-lines"></i> Full Document View</h3>
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <a id="modalOriginalLink" href="#" target="_blank" class="btn btn-primary" style="font-size: 11px; padding: 6px 12px; text-decoration: none; display: flex; align-items: center; gap: 6px;">
-                        <i class="fa-solid fa-file-export"></i> Open Original File
-                    </a>
-                    <button class="close-modal-btn" onclick="closeModal()">&times;</button>
-                </div>
-            </div>
-            <div class="modal-body">
-                <div id="modalFullText" class="modal-full-text"></div>
-            </div>
+    <div class="rail-bottom">
+      <div class="rail-item" id="railInsights" onclick="setRailView('insights')" title="Insights">
+        <i class="ti ti-chart-dots"></i>
+        <span>Insights</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Sidebar ───────────────────────────────────────────── -->
+  <aside class="sidebar" id="appSidebar">
+    <div class="sidebar-inner">
+
+      <!-- Logo -->
+      <div class="sb-logo">Docu<em>Sync</em></div>
+
+      <!-- Library type filter — populated by app.js fetchCounts() -->
+      <div id="tagCloud" class="tag-cloud-root">
+        <!-- app.js injects libTypeNav here, then grouped tags below -->
+      </div>
+
+      <!-- File list -->
+      <div class="sb-section">
+        <div class="sb-section-hd" onclick="toggleSbSection('fileListWrap')">
+          <span class="sb-section-lbl"><i class="ti ti-folder-open"></i> Documents</span>
+          <i class="ti ti-chevron-down sb-arr" id="fileListWrapArr"></i>
         </div>
+        <div id="fileListWrap" class="sb-section-body">
+          <div id="fileList" class="file-list">
+            <p class="empty-state">No documents yet.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick stats -->
+      <div class="sb-stats">
+        <div class="stat-pill">
+          <span class="stat-n" id="statCompleted">0</span>
+          <span class="stat-l">Indexed</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-n" id="statProcessing">0</span>
+          <span class="stat-l">Queued</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-n" id="statFailed">0</span>
+          <span class="stat-l">Failed</span>
+        </div>
+      </div>
+
     </div>
 
-    <script src="app.js"></script>
+    <!-- Sidebar collapse tab -->
+    <button class="sb-collapse-tab" id="sbCollapseTab" onclick="toggleSidebar()" title="Collapse sidebar">
+      <i class="ti ti-chevron-left" id="sbCollapseIcon"></i>
+    </button>
+  </aside>
+
+  <!-- ── Main workspace ────────────────────────────────────── -->
+  <main class="main-workspace" id="mainWorkspace">
+
+    <!-- Top bar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <h1 class="topbar-title" id="topbarTitle">Your <em>library</em></h1>
+      </div>
+      <div class="topbar-right">
+        <div class="search-wrap">
+          <i class="ti ti-search search-icon-inner"></i>
+          <input type="text" id="searchInput"
+            placeholder="Search by meaning, keyword, or tag…"
+            autocomplete="off">
+          <button id="searchButton" class="search-btn">Search</button>
+        </div>
+        <button class="upload-pill" onclick="openUploadSheet()">
+          <i class="ti ti-upload"></i> Upload
+        </button>
+      </div>
+    </header>
+
+    <!-- Workspace body: results + inspector split -->
+    <div class="workspace-split">
+
+      <!-- Results column -->
+      <section class="col-results" id="colResults">
+        <div class="col-header">
+          <span class="col-title"><i class="ti ti-list-search"></i> Results</span>
+          <span class="col-badge" id="resultsCount">0</span>
+        </div>
+        <div id="searchResults" class="results-list">
+          <div class="empty-card">
+            <i class="ti ti-search empty-icon"></i>
+            <p class="empty-title">Search your documents</p>
+            <p class="empty-sub">Use the bar above to search by meaning, keyword, or paste a question.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Inspector column -->
+      <section class="col-inspector" id="colInspector">
+        <div class="col-header">
+          <span class="col-title"><i class="ti ti-info-circle"></i> Inspector</span>
+          <!-- drawer collapse handled by app.js toggle btn -->
+        </div>
+        <div id="inspectorPanel" class="inspector-panel">
+          <div class="empty-card">
+            <i class="ti ti-eye empty-icon"></i>
+            <p class="empty-title">Select a result</p>
+            <p class="empty-sub">Click any search result to see context, tags, and extracted insights.</p>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+</div><!-- /app-root -->
+
+<!-- ── Upload sheet ──────────────────────────────────────── -->
+<div class="upload-sheet hidden" id="uploadSheet">
+  <div class="upload-sheet-backdrop" onclick="closeUploadSheet()"></div>
+  <div class="upload-sheet-panel">
+    <div class="us-head">
+      <span class="us-title">Upload documents</span>
+      <button class="us-close" onclick="closeUploadSheet()"><i class="ti ti-x"></i></button>
+    </div>
+    <div id="dropzone" class="dropzone">
+      <input type="file" id="fileInput" multiple accept=".pdf,.docx,.txt,.md" style="display:none">
+      <div class="dz-inner">
+        <div class="dz-icon"><i class="ti ti-cloud-upload"></i></div>
+        <p class="dz-title">Drop files here</p>
+        <p class="dz-sub">PDF, DOCX or TXT · up to 120 MB<br>AI tagging runs automatically</p>
+        <button class="dz-btn" onclick="document.getElementById('fileInput').click()">Choose files</button>
+      </div>
+    </div>
+    <div class="upload-progress-list" id="uploadProgressList"></div>
+  </div>
+</div>
+
+<!-- ── Toast ─────────────────────────────────────────────── -->
+<div id="toast" class="toast hidden">
+  <div class="toast-inner">
+    <span id="toastMessage">…</span>
+  </div>
+</div>
+
+<!-- ── Full doc modal ─────────────────────────────────────── -->
+<div id="fullDocModal" class="modal hidden">
+  <div class="modal-backdrop" onclick="closeModal()"></div>
+  <div class="modal-panel">
+    <div class="modal-head">
+      <h3 id="modalTitle"><i class="ti ti-file-text"></i> Document</h3>
+      <div class="modal-actions">
+        <a id="modalOriginalLink" href="#" target="_blank" class="modal-dl-btn">
+          <i class="ti ti-download"></i> Download
+        </a>
+        <button class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></button>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div id="modalFullText" class="modal-text"></div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+// ── Rail view switcher ──────────────────────────────────────
+function setRailView(view) {
+  document.querySelectorAll('.rail-item').forEach(el => el.classList.remove('active'));
+  const railMap = { lib:'railLib', search:'railSearch', tags:'railTags', insights:'railInsights' };
+  if (railMap[view]) document.getElementById(railMap[view]).classList.add('active');
+
+  // Update topbar title
+  const titles = {
+    lib: 'Your <em>library</em>',
+    search: '<em>Search</em>',
+    tags: 'Tag <em>directory</em>',
+    insights: '<em>Insights</em>',
+  };
+  const el = document.getElementById('topbarTitle');
+  if (el && titles[view]) el.innerHTML = titles[view];
+
+  // Focus search on search view
+  if (view === 'search') {
+    setTimeout(() => document.getElementById('searchInput')?.focus(), 80);
+  }
+}
+
+// ── Upload sheet ───────────────────────────────────────────
+function openUploadSheet() {
+  document.getElementById('uploadSheet').classList.remove('hidden');
+  requestAnimationFrame(() => document.getElementById('uploadSheet').classList.add('open'));
+}
+function closeUploadSheet() {
+  const s = document.getElementById('uploadSheet');
+  s.classList.remove('open');
+  setTimeout(() => s.classList.add('hidden'), 280);
+}
+
+// ── Sidebar collapse ───────────────────────────────────────
+let _sbOpen = true;
+function toggleSidebar() {
+  _sbOpen = !_sbOpen;
+  document.getElementById('appSidebar').classList.toggle('collapsed', !_sbOpen);
+  document.getElementById('sbCollapseIcon').className = _sbOpen
+    ? 'ti ti-chevron-left' : 'ti ti-chevron-right';
+  document.getElementById('sbCollapseTab').title = _sbOpen ? 'Collapse sidebar' : 'Expand sidebar';
+}
+
+// ── Inspector collapse (called from app.js toggleDrawer) ───
+// Override app.js toggleDrawer to target the right element
+window.toggleDrawer = function() {
+  const col = document.getElementById('colInspector');
+  const btn = document.getElementById('drawerToggleBtn');
+  const open = !col.classList.contains('collapsed');
+  col.classList.toggle('collapsed', open);
+  if (btn) {
+    btn.innerHTML = open
+      ? '<i class="ti ti-chevron-left"></i>'
+      : '<i class="ti ti-chevron-right"></i>';
+  }
+};
+
+// ── Sidebar sub-section toggle ─────────────────────────────
+function toggleSbSection(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const open = el.style.display !== 'none' && el.style.display !== '';
+  el.style.display = open ? 'none' : '';
+  const arr = document.getElementById(id + 'Arr');
+  if (arr) arr.style.transform = open ? 'rotate(-90deg)' : '';
+}
+
+// ── Wire dropzone click to open upload sheet then file pick ─
+document.addEventListener('DOMContentLoaded', () => {
+  // Patch dropzone so clicking it opens the file picker (already inside sheet)
+  const dz = document.getElementById('dropzone');
+  if (dz) {
+    dz.addEventListener('click', (e) => {
+      if (e.target.tagName !== 'BUTTON') {
+        document.getElementById('fileInput').click();
+      }
+    });
+  }
+
+  // Inject drawer toggle button
+  if (!document.getElementById('drawerToggleBtn')) {
+    const btn = document.createElement('button');
+    btn.id = 'drawerToggleBtn';
+    btn.className = 'drawer-toggle-btn';
+    btn.title = 'Collapse inspector';
+    btn.innerHTML = '<i class="ti ti-chevron-right"></i>';
+    btn.addEventListener('click', () => window.toggleDrawer());
+    document.getElementById('colInspector')?.prepend(btn);
+  }
+});
+</script>
 </body>
 </html>

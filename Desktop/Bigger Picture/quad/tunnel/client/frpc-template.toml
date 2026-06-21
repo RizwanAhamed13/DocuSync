@@ -1,0 +1,9 @@
+serverAddr = "{server_host}"
+serverPort = {server_port}
+auth.token = "{frp_token}"
+
+[[proxies]]
+name = "{frpc_name}"
+type = "http"
+localPort = {local_port}
+customDomains = ["{subdomain}.{base_domain}"]

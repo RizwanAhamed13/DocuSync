@@ -1,3 +1,4 @@
+from __future__ import annotations
 import asyncio
 import json
 import os
@@ -6,7 +7,8 @@ import sqlite3
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
+from typing import Optional
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -21,13 +23,14 @@ from embeddings import (
 )
 from indexer import (
     _rule_based_tags,
+    _rule_based_summary,
     check_model_version_match,
-    check_ollama_availability,
     chunk_document,
     extract_ai_metadata,
     get_db_connection,
     save_model_version,
 )
+
 from ocr import warm_up_ocr
 from parser import extract_text_by_pages
 from search import hybrid_search
@@ -49,6 +52,47 @@ _ingest_progress: dict[str, dict] = {}
 def _set_progress(doc_id: str, step: str, pct: int, detail: str = "") -> None:
     """Update the live progress state for a document being ingested."""
     _ingest_progress[doc_id] = {"step": step, "pct": pct, "detail": detail}
+
+
+# ---------------------------------------------------------------------------
+# Document type classification
+# ---------------------------------------------------------------------------
+
+_SYLLABUS_TAGS  = {"Course Syllabus", "Syllabus"}
+_NOTES_TAGS     = {"Lecture Notes", "Lab Report", "Lab Notes"}
+_ASSIGN_TAGS    = {"Assignment", "Final Exam", "Midterm Exam", "Exam / Quiz",
+                   "Question Bank", "Homework", "Project"}
+_LEVEL_WORDS    = ("Graduate", "Doctoral", "Undergraduate", "Upper", "Sophomore",
+                   "Introductory", "Advanced")
+_TERM_RE        = __import__("re").compile(r"^(Spring|Fall|Summer|Winter)\s+\d{4}$", __import__("re").IGNORECASE)
+
+
+def _classify_doc_type(tags: list[str]) -> str:
+    """Return library category string from a list of tags."""
+    tag_set = set(tags)
+    if tag_set & _SYLLABUS_TAGS:
+        return "syllabus"
+    if tag_set & _NOTES_TAGS:
+        return "notes"
+    if tag_set & _ASSIGN_TAGS:
+        return "assign"
+    return "other"
+
+
+def _categorise_tags(tags: list[str]) -> dict:
+    """Split a flat tag list into subject / doc_type / level / term buckets."""
+    DOC_TYPE_SET = _SYLLABUS_TAGS | _NOTES_TAGS | _ASSIGN_TAGS
+    result: dict[str, list[str]] = {"subject": [], "doc_type": [], "level": [], "term": []}
+    for t in tags:
+        if t in DOC_TYPE_SET:
+            result["doc_type"].append(t)
+        elif _TERM_RE.match(t):
+            result["term"].append(t)
+        elif any(w in t for w in _LEVEL_WORDS):
+            result["level"].append(t)
+        else:
+            result["subject"].append(t)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -129,6 +173,24 @@ def init_db():
             f"({len(existing_fts)} documents re-indexed)."
         )
 
+    # Schema v3 — add doc_type column
+    if schema_version < 3:
+        try:
+            cursor.execute("ALTER TABLE documents ADD COLUMN doc_type TEXT DEFAULT 'other'")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
+        # Back-fill doc_type from existing tags
+        rows = cursor.execute("SELECT id, tags FROM documents WHERE status='completed'").fetchall()
+        for row in rows:
+            tags = json.loads(row["tags"]) if row["tags"] else []
+            dtype = _classify_doc_type(tags)
+            cursor.execute("UPDATE documents SET doc_type=? WHERE id=?", (dtype, row["id"]))
+
+        cursor.execute(
+            "INSERT OR REPLACE INTO db_meta (key, value) VALUES ('schema_version', '3')"
+        )
+
     cursor.execute(
         "UPDATE documents SET status = 'failed', "
         "error_message = 'Ingestion interrupted by system restart. Please re-upload.' "
@@ -197,14 +259,6 @@ async def lifespan(app: FastAPI):
             "New uploads will use the new model immediately.\n"
         )
 
-    ollama = await check_ollama_availability()
-    if not ollama["available"]:
-        print(f"\nWARNING: {ollama['warning']}\n")
-    elif ollama.get("warning"):
-        print(f"\nWARNING: {ollama['warning']}\n")
-    else:
-        print(f"Ollama ready. Available models: {', '.join(ollama['models'])}")
-
     # Pre-load the OCR engine so the first scanned document doesn't pay
     # model-download latency and so startup failures are visible immediately.
     # Runs in a thread because model loading is CPU/IO-bound.
@@ -270,8 +324,8 @@ async def background_ingest_task(file_path: str, doc_id: str):
         page_count = len(pages_content)
 
         pg_label = f"{page_count} page{'s' if page_count != 1 else ''}"
-        _set_progress(doc_id, "ai_tagging", 65, f"Running AI analysis on {pg_label}…")
         full_sample = "\n\n".join(p["text"] for p in pages_content[:3])
+        _set_progress(doc_id, "ai_tagging", 65, f"Running AI analysis on {pg_label}…")
         ai_metadata = await extract_ai_metadata(full_sample, filename=filename)
 
         summary = ai_metadata.get("summary", "No summary generated.")
@@ -323,11 +377,12 @@ async def background_ingest_task(file_path: str, doc_id: str):
             )
 
         _set_progress(doc_id, "saving", 97, "Persisting metadata to database…")
+        doc_type = _classify_doc_type(tags)
         cursor.execute(
             """
             UPDATE documents
             SET file_size_bytes=?, page_count=?, summary=?, tags=?,
-                key_findings=?, entities=?, status='completed'
+                key_findings=?, entities=?, doc_type=?, status='completed'
             WHERE id=?
             """,
             (
@@ -337,6 +392,7 @@ async def background_ingest_task(file_path: str, doc_id: str):
                 json.dumps(tags),
                 json.dumps(key_findings),
                 json.dumps(entities),
+                doc_type,
                 doc_id,
             ),
         )
@@ -387,8 +443,6 @@ async def health_check():
     chunk_count = collection.count()
     space = (collection.metadata or {}).get("hnsw:space", "l2")
 
-    ollama_status = await check_ollama_availability()
-
     return {
         "status": "ok",
         "documents": {"indexed": doc_count, "processing": processing_count},
@@ -402,7 +456,6 @@ async def health_check():
             "max_upload_mb": MAX_UPLOAD_BYTES // (1024 * 1024),
             "max_chunks_per_doc": MAX_CHUNKS_PER_DOC,
         },
-        "ollama": ollama_status,
     }
 
 
@@ -509,6 +562,41 @@ async def migrate_to_cosine():
     }
 
 
+@app.post("/documents/{doc_id}/retry")
+async def retry_failed_document(doc_id: str, background_tasks: BackgroundTasks):
+    """Re-queue a failed document for ingestion without re-uploading the file."""
+    conn = get_db_connection()
+    row = conn.execute(
+        "SELECT filename, status FROM documents WHERE id=?", (doc_id,)
+    ).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Document not found.")
+    if row["status"] not in ("failed", "processing"):
+        conn.close()
+        raise HTTPException(
+            status_code=400,
+            detail=f"Document status is '{row['status']}' — only failed documents can be retried.",
+        )
+    filename = row["filename"]
+    _, ext = os.path.splitext(filename.lower())
+    file_path = os.path.join(UPLOAD_DIR, f"{doc_id}{ext}")
+    if not os.path.exists(file_path):
+        conn.close()
+        raise HTTPException(
+            status_code=404,
+            detail="Original file not found on disk. Please re-upload.",
+        )
+    conn.execute(
+        "UPDATE documents SET status='processing', error_message=NULL WHERE id=?",
+        (doc_id,),
+    )
+    conn.commit()
+    conn.close()
+    background_tasks.add_task(background_ingest_task, file_path, doc_id)
+    return {"message": f"Retry started for {filename}.", "document_id": doc_id}
+
+
 @app.post("/upload")
 async def upload_file(
     background_tasks: BackgroundTasks, file: UploadFile = File(...)
@@ -557,32 +645,48 @@ async def upload_file(
 
 
 @app.get("/documents")
-def list_documents():
-    """Returns all documents, newest first."""
+def list_documents(
+    type: Optional[str] = Query(None, description="Filter by doc_type: syllabus|notes|assign|other"),
+    tag:  Optional[str] = Query(None, description="Filter by a specific tag name"),
+):
+    """Returns all completed + in-progress documents, newest first. Supports ?type= and ?tag= filters."""
     conn = get_db_connection()
     rows = conn.execute(
         "SELECT id, filename, file_size_bytes, page_count, summary, tags, "
-        "key_findings, entities, status, error_message, upload_date "
+        "key_findings, entities, doc_type, status, error_message, upload_date "
         "FROM documents ORDER BY upload_date DESC"
     ).fetchall()
     conn.close()
 
-    return [
-        {
+    results = []
+    for r in rows:
+        tags_list = json.loads(r["tags"]) if r["tags"] else []
+
+        # Apply ?type= filter
+        doc_type = r["doc_type"] or _classify_doc_type(tags_list)
+        if type and doc_type != type:
+            continue
+
+        # Apply ?tag= filter
+        if tag and tag not in tags_list:
+            continue
+
+        results.append({
             "id": r["id"],
             "filename": r["filename"],
             "file_size_bytes": r["file_size_bytes"],
             "page_count": r["page_count"],
             "summary": r["summary"],
-            "tags": json.loads(r["tags"]) if r["tags"] else [],
+            "tags": tags_list,
+            "tag_categories": _categorise_tags(tags_list),
+            "doc_type": doc_type,
             "key_findings": json.loads(r["key_findings"]) if r["key_findings"] else [],
             "entities": json.loads(r["entities"]) if r["entities"] else {},
             "status": r["status"],
             "error_message": r["error_message"],
             "upload_date": r["upload_date"],
-        }
-        for r in rows
-    ]
+        })
+    return results
 
 
 @app.get("/documents/{doc_id}/status")
@@ -611,7 +715,11 @@ def get_document_status(doc_id: str):
 
 @app.get("/tags")
 def list_tags():
-    """Returns unique tags and their document counts."""
+    """
+    Returns tags grouped by category (subject / doc_type / level / term)
+    plus a flat list for backwards compatibility.
+    Each entry has: name, count, category.
+    """
     conn = get_db_connection()
     rows = conn.execute(
         "SELECT tags FROM documents WHERE status='completed'"
@@ -624,7 +732,46 @@ def list_tags():
             for tag in json.loads(r["tags"]):
                 tag_counts[tag] = tag_counts.get(tag, 0) + 1
 
-    return [{"name": name, "count": count} for name, count in tag_counts.items()]
+    flat = []
+    grouped: dict[str, list] = {"subject": [], "doc_type": [], "level": [], "term": []}
+    DOC_TYPE_SET = _SYLLABUS_TAGS | _NOTES_TAGS | _ASSIGN_TAGS
+    for name, count in sorted(tag_counts.items(), key=lambda x: -x[1]):
+        if name in DOC_TYPE_SET:
+            cat = "doc_type"
+        elif _TERM_RE.match(name):
+            cat = "term"
+        elif any(w in name for w in _LEVEL_WORDS):
+            cat = "level"
+        else:
+            cat = "subject"
+        entry = {"name": name, "count": count, "category": cat}
+        flat.append(entry)
+        grouped[cat].append(entry)
+
+    return {"flat": flat, "grouped": grouped}
+
+
+@app.get("/documents/counts")
+def document_counts():
+    """Returns per-category document counts for sidebar badges."""
+    conn = get_db_connection()
+    rows = conn.execute(
+        "SELECT doc_type, status FROM documents"
+    ).fetchall()
+    conn.close()
+    counts = {"all": 0, "syllabus": 0, "notes": 0, "assign": 0, "other": 0,
+              "processing": 0, "failed": 0}
+    for r in rows:
+        if r["status"] == "processing":
+            counts["processing"] += 1
+        elif r["status"] == "failed":
+            counts["failed"] += 1
+        elif r["status"] == "completed":
+            counts["all"] += 1
+            dt = r["doc_type"] or "other"
+            if dt in counts:
+                counts[dt] += 1
+    return counts
 
 
 @app.post("/search")

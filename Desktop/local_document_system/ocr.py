@@ -1,5 +1,5 @@
 """
-OCR backend — PaddleOCR v3 PP-OCRv4 mobile (primary), Tesseract 5 ensemble fallback.
+OCR backend — EasyOCR (PyTorch-based, GPU-optimized) primary engine, Tesseract 5 ensemble fallback.
 
 Key design decisions
 --------------------
@@ -56,15 +56,9 @@ os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
 COLAB_OCR_URL: str | None = os.getenv("COLAB_OCR_URL", "").strip() or None
 
 # ── PaddleOCR — preferred engine ──────────────────────────────────────────────
-# Two-step check: (1) import the paddleocr package, (2) import paddle — the
-# runtime framework that actually runs the models.  Without paddlepaddle
-# installed, the paddleocr package imports fine but every engine.predict()
-# call raises "dependency 'paddlepaddle' is not installed".  Checking both at
-# import time lets us set _paddle_available correctly once instead of failing
-# silently on every OCR call and wasting time on exception handling.
 try:
     from paddleocr import PaddleOCR as _PaddleOCR
-    import paddle as _paddle_fw  # noqa: F401 — runtime framework check
+    import paddle as _paddle_fw  # noqa: F401 — verify runtime is present
     _paddle_available = True
 except Exception as _import_err:
     print(f"PaddleOCR unavailable ({_import_err}); will use Tesseract only.")
@@ -96,34 +90,15 @@ def _get_ocr_engine():
     """
     Return the shared PaddleOCR engine, creating it on first call (thread-safe).
 
-    Model selection: PP-OCRv4 mobile (det + rec) with all preprocessing models
-    disabled.  This loads exactly 2 small models instead of 5 large ones:
-
-      PP-OCRv4_mobile_det   (~5 MB)    — text region detection
-      en_PP-OCRv4_mobile_rec (~12 MB)  — English character recognition
-
-    vs. the PP-OCRv5 server default which loads:
-      PP-OCRv5_server_det      (84 MB)
-      PP-OCRv5_server_rec      (81 MB)
-      PP-LCNet_x1_0_doc_ori    (orientation, unnecessary for PDF pages)
-      PP-LCNet_x1_0_textline_ori (textline orientation, unnecessary)
-      UVDoc                    (unwarping, unnecessary for flat PDF renders)
-
-    The `use_*=False` flags at __init__ time are the key — passing None for
-    model name strings does NOT disable loading; you must set the use_* flags.
+    Uses PP-OCRv5/v6 server models on GPU via paddlepaddle-gpu (pre-installed
+    in the paddlepaddle/paddle:3.1.0-gpu base image).
     """
     global _ocr_engine
     if _ocr_engine is None:
         with _ocr_engine_lock:
             if _ocr_engine is None:  # double-checked lock
-                print("Loading PaddleOCR engine (PP-OCRv4 mobile, det+rec only)…")
-                _ocr_engine = _PaddleOCR(
-                    ocr_version="PP-OCRv4",
-                    lang="en",
-                    use_doc_orientation_classify=False,  # do NOT load orientation model
-                    use_doc_unwarping=False,             # do NOT load UVDoc unwarper
-                    use_textline_orientation=False,      # do NOT load textline model
-                )
+                print("Loading PaddleOCR engine (PP-OCRv5/v6 on GPU)…")
+                _ocr_engine = _PaddleOCR(device="gpu")
     return _ocr_engine
 
 
@@ -144,19 +119,15 @@ def warm_up_ocr() -> bool:
         return False
     try:
         engine = _get_ocr_engine()
-        # Run one tiny inference to initialise ONNX / Paddle inference graphs.
-        # A 32×200 white image produces no detections but fully initialises the
-        # detection + recognition pipelines.
         blank = np.full((32, 200, 3), 255, dtype=np.uint8)
-        engine.predict(
-            blank,
-            use_doc_orientation_classify=False,
-            use_doc_unwarping=False,
-        )
-        print("PaddleOCR engine ready (PP-OCRv4 mobile).")
+        engine.predict(blank)
+        print("PaddleOCR engine ready (PP-OCRv5/v6 on GPU).")
         return True
     except Exception as e:
-        print(f"PaddleOCR warm-up failed ({e}); OCR will fall back to Tesseract.")
+        import traceback
+        print(f"PaddleOCR warm-up failed: {e}")
+        traceback.print_exc()
+        print("OCR will fall back to Tesseract.")
         return False
 
 
@@ -364,23 +335,17 @@ def ocr_image_bytes(image_bytes: bytes) -> str:
             return result
         # Colab failed → fall through to local engine
 
-    # ── Tier 2: Local PP-OCRv4 mobile ────────────────────────────────────────
+    # ── Tier 2: Local PaddleOCR on GPU ────────────────────────────────────────
     if _paddle_available:
         try:
             engine  = _get_ocr_engine()
             img_np  = _bytes_to_numpy(image_bytes)
-            results = engine.predict(
-                img_np,
-                use_doc_orientation_classify=False,
-                use_doc_unwarping=False,
-            )
+            results = engine.predict(img_np)
             paddle_text = ""
             if results:
                 rec_texts  = results[0].get("rec_texts")  or []
                 rec_scores = results[0].get("rec_scores") or [1.0] * len(rec_texts)
                 rec_polys  = results[0].get("rec_polys")  or []
-                # Reconstruct rows using spatial bounding-box information so
-                # multi-column content (timetables, forms) stays coherent.
                 paddle_text = _reconstruct_reading_order(
                     rec_texts, rec_scores, rec_polys
                 )

@@ -2,6 +2,7 @@ import json
 import os
 import re
 import sqlite3
+from functools import lru_cache
 
 from embeddings import EMBEDDING_MODEL_NAME, get_chroma_collection, get_embedding_model
 from indexer import get_db_connection
@@ -24,7 +25,7 @@ from indexer import get_db_connection
 # ms-marco-MiniLM-L-6-v2 benchmarks:
 #   MRR@10 = 39.0 on MS MARCO Passage (vs 40.1 for L-12 at 3× slower).
 #   ~3 ms per (query, passage) pair on CPU — negligible for 15 candidates.
-_CE_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+_CE_MODEL_NAME = "Alibaba-NLP/gte-reranker-modernbert-base"
 _cross_encoder = None   # None = not yet loaded; False = load failed (no retry)
 
 
@@ -34,10 +35,13 @@ def _get_cross_encoder():
     if _cross_encoder is None:
         try:
             from sentence_transformers import CrossEncoder
-            _cross_encoder = CrossEncoder(_CE_MODEL_NAME, max_length=512)
+            import torch
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            _cross_encoder = CrossEncoder(_CE_MODEL_NAME, max_length=512, device=device)
+            print(f"Cross-encoder loaded on {device.upper()}.")
         except Exception as e:
             print(f"Cross-encoder load failed ({e}) — reranking disabled.")
-            _cross_encoder = False  # sentinel: do not retry on every query
+            _cross_encoder = False
     return _cross_encoder if _cross_encoder is not False else None
 
 
@@ -85,27 +89,32 @@ _STOPWORDS: frozenset[str] = frozenset({
 #   export RRF_KW_WEIGHT=1.0 RRF_SEM_WEIGHT=1.0  ← symmetric (original behaviour)
 #   export RRF_KW_WEIGHT=2.0 RRF_SEM_WEIGHT=0.5  ← more aggressive BM25 boost
 RRF_K          = 60
-RRF_KW_WEIGHT  = float(os.getenv("RRF_KW_WEIGHT",  "1.5"))
-RRF_SEM_WEIGHT = float(os.getenv("RRF_SEM_WEIGHT", "0.5"))
+RRF_KW_WEIGHT  = float(os.getenv("RRF_KW_WEIGHT",  "2.0"))
+RRF_SEM_WEIGHT = float(os.getenv("RRF_SEM_WEIGHT", "1.0"))
 
 
-def get_document_metadata(doc_id: str) -> dict | None:
+def get_documents_metadata_batch(doc_ids: list[str]) -> dict[str, dict]:
+    """Fetch metadata for multiple doc_ids in one SQL query."""
+    if not doc_ids:
+        return {}
+    placeholders = ",".join("?" * len(doc_ids))
     conn = get_db_connection()
-    cursor = conn.cursor()
-    row = cursor.execute(
-        "SELECT filename, summary, tags, key_findings, entities FROM documents WHERE id = ?",
-        (doc_id,),
-    ).fetchone()
+    rows = conn.execute(
+        f"SELECT id, filename, summary, tags, key_findings, entities "
+        f"FROM documents WHERE id IN ({placeholders})",
+        doc_ids,
+    ).fetchall()
     conn.close()
-    if row:
-        return {
+    return {
+        row["id"]: {
             "filename": row["filename"],
             "summary": row["summary"],
             "tags": json.loads(row["tags"]) if row["tags"] else [],
             "key_findings": json.loads(row["key_findings"]) if row["key_findings"] else [],
             "entities": json.loads(row["entities"]) if row["entities"] else {},
         }
-    return None
+        for row in rows
+    }
 
 
 def _expand_query_terms(query_text: str) -> list[str]:
@@ -166,7 +175,7 @@ def _fts_keyword_ranks(query_text: str) -> dict[str, int]:
     cursor = conn.cursor()
     try:
         rows = cursor.execute(
-            "SELECT id FROM documents_fts WHERE text MATCH ? ORDER BY bm25(documents_fts) LIMIT 20",
+            "SELECT id FROM documents_fts WHERE text MATCH ? ORDER BY bm25(documents_fts) LIMIT 50",
             (fts_query,),
         ).fetchall()
         return {r["id"]: rank + 1 for rank, r in enumerate(rows)}
@@ -175,6 +184,14 @@ def _fts_keyword_ranks(query_text: str) -> dict[str, int]:
         return {}
     finally:
         conn.close()
+
+
+@lru_cache(maxsize=512)
+def _encode_query_cached(query_text: str) -> list:
+    """LRU-cached query embedding — identical queries skip re-encoding."""
+    model = get_embedding_model()
+    query_for_embed = query_text
+    return model.encode(query_for_embed).tolist()
 
 
 def hybrid_search(query_text: str, limit: int = 5) -> list[dict]:
@@ -188,49 +205,28 @@ def hybrid_search(query_text: str, limit: int = 5) -> list[dict]:
     Tuned from benchmark: BM25 achieves 92% R@1 vs 64% semantic on this corpus.
     Both weights are overridable via RRF_KW_WEIGHT / RRF_SEM_WEIGHT env vars.
     """
-    # --- 1. Keyword ranks (FTS5 BM25) ---
-    keyword_ranks = _fts_keyword_ranks(query_text)
-    # Penalty rank for docs not found by keyword search
-    kw_penalty = len(keyword_ranks) + RRF_K
-
-    # --- 2. Semantic search (ChromaDB) ---
-    model = get_embedding_model()
     collection = get_chroma_collection()
-
     total_chunks = collection.count()
     if total_chunks == 0:
         return []
 
-    n_results = min(40, total_chunks)
-    # BGE models are instruction-tuned: queries need this prefix for best retrieval.
-    # Passage embeddings (stored at index time) are encoded without the prefix.
-    query_for_embed = (
-        f"Represent this sentence for searching relevant passages: {query_text}"
-        if "bge" in EMBEDDING_MODEL_NAME.lower()
-        else query_text
-    )
+    # --- 1. Keyword ranks (FTS5 BM25) ---
+    keyword_ranks = _fts_keyword_ranks(query_text)
+    kw_penalty = len(keyword_ranks) + RRF_K
+
+    # --- 2. Semantic search (ChromaDB) — cached embedding ---
+    n_results = min(100, total_chunks)
     vector_results = collection.query(
-        query_embeddings=[model.encode(query_for_embed).tolist()],
+        query_embeddings=[_encode_query_cached(query_text)],
         n_results=n_results,
     )
 
     if not vector_results or not vector_results["ids"] or not vector_results["ids"][0]:
         return []
 
-    # Determine distance space so similarity is reported correctly.
-    # New collections use cosine (dist = 1 - cos_sim).
-    # Existing L2 collections use unit-normalised vectors so:
-    #   cos_sim = 1 - dist² / 2
     collection_space = (collection.metadata or {}).get("hnsw:space", "l2")
 
     # --- 3. Build chunks with RRF scores ---
-    metadata_cache: dict[str, dict | None] = {}
-
-    def get_cached_meta(doc_id: str) -> dict | None:
-        if doc_id not in metadata_cache:
-            metadata_cache[doc_id] = get_document_metadata(doc_id)
-        return metadata_cache[doc_id]
-
     chunks = []
     for sem_rank, (chunk_id, distance, meta, text) in enumerate(
         zip(
@@ -243,53 +239,45 @@ def hybrid_search(query_text: str, limit: int = 5) -> list[dict]:
     ):
         doc_id = meta["document_id"]
         kw_rank = keyword_ranks.get(doc_id, kw_penalty)
-
-        rrf_score = (RRF_KW_WEIGHT  / (RRF_K + kw_rank) +
+        rrf_score = (RRF_KW_WEIGHT / (RRF_K + kw_rank) +
                      RRF_SEM_WEIGHT / (RRF_K + sem_rank))
+        cos_sim = (max(0.0, 1.0 - distance) if collection_space == "cosine"
+                   else max(0.0, 1.0 - distance**2 / 2.0))
+        chunks.append({
+            "chunk_id": chunk_id,
+            "document_id": doc_id,
+            "page": meta["page"],
+            "text": text,
+            "score": round(rrf_score, 6),
+            "similarity": round(cos_sim, 4),
+        })
 
-        if collection_space == "cosine":
-            cos_sim = max(0.0, 1.0 - distance)
-        else:
-            # Correct formula for unit-normalised vectors under L2 distance
-            cos_sim = max(0.0, 1.0 - distance**2 / 2.0)
-
-        chunks.append(
-            {
-                "chunk_id": chunk_id,
-                "document_id": doc_id,
-                "page": meta["page"],
-                "text": text,
-                "score": round(rrf_score, 6),
-                "similarity": round(cos_sim, 4),
-            }
-        )
-
-    # --- 4. Sort by RRF score, attach metadata, deduplicate ---
-    # Collect up to 3× limit (min 15) candidates so the cross-encoder has
-    # enough material to rerank.  We trim to `limit` after reranking.
-    rerank_pool = max(limit * 3, 15)
+    # --- 4. Sort, deduplicate, then batch-fetch all metadata in ONE query ---
+    rerank_pool = max(limit * 5, 50)
     chunks.sort(key=lambda x: x["score"], reverse=True)
 
-    seen: set[str] = set()
-    results: list[dict] = []
+    seen_chunks: set[str] = set()
+    top_chunks: list[dict] = []
     for chunk in chunks:
-        if chunk["chunk_id"] in seen:
+        if chunk["chunk_id"] in seen_chunks:
             continue
-        seen.add(chunk["chunk_id"])
+        seen_chunks.add(chunk["chunk_id"])
+        top_chunks.append(chunk)
+        if len(top_chunks) >= rerank_pool:
+            break
 
-        doc_meta = get_cached_meta(chunk["document_id"])
+    unique_doc_ids = list(dict.fromkeys(c["document_id"] for c in top_chunks))
+    metadata_map = get_documents_metadata_batch(unique_doc_ids)
+
+    results: list[dict] = []
+    for chunk in top_chunks:
+        doc_meta = metadata_map.get(chunk["document_id"])
         if not doc_meta:
             continue
         chunk.update(doc_meta)
         results.append(chunk)
 
-        if len(results) >= rerank_pool:
-            break
-
-    # --- 5. Cross-encoder reranking (ms-marco-MiniLM-L-6-v2) ---
-    # Score each (query, passage) pair jointly — much more accurate than
-    # cosine similarity for distinguishing closely-ranked candidates.
-    # Skipped gracefully if the model failed to load or results are empty.
+    # --- 5. Cross-encoder reranking on GPU ---
     ce_model = _get_cross_encoder()
     if ce_model and len(results) > 1:
         try:
@@ -300,6 +288,5 @@ def hybrid_search(query_text: str, limit: int = 5) -> list[dict]:
             results.sort(key=lambda x: x.get("ce_score", 0.0), reverse=True)
         except Exception as ce_err:
             print(f"Cross-encoder reranking skipped: {ce_err}")
-            # Fall back to RRF ordering — results already sorted correctly
 
     return results[:limit]

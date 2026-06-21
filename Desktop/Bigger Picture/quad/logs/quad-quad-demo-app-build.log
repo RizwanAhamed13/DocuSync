@@ -1,0 +1,4 @@
+[2026-06-17T06:41:57.482776+00:00] Starting deployment pipeline (subprocess runner)...
+[2026-06-17T06:41:57.483481+00:00] Detecting stack in path: projects/quad-demo-app
+[2026-06-17T06:41:57.484317+00:00] Detected stack: static (confidence: high)
+[2026-06-17T06:41:57.484323+00:00] Awaiting admin approval. Use POST /deploy/approve/{app_name} to start.

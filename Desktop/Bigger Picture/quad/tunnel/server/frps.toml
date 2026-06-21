@@ -1,0 +1,8 @@
+bindPort = 7000
+vhostHTTPPort = 7080
+auth.token = "{{ .Envs.FRP_TOKEN }}"
+
+webServer.addr = "0.0.0.0"
+webServer.port = 7500
+webServer.user = "admin"
+webServer.password = "admin"

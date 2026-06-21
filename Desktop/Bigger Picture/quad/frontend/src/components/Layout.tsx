@@ -15,7 +15,6 @@ import {
   Zap,
   Globe,
   ChevronDown,
-  Settings,
 } from 'lucide-react';
 
 interface NavItem {
@@ -63,21 +62,21 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   const crumbLabel = crumb.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
   return (
-    <div className="flex min-h-screen bg-[#f8f9fa]">
+    <div className="flex min-h-screen bg-slate-50">
       {/* Sidebar */}
-      <aside className="hidden md:flex flex-col w-56 shrink-0 bg-white border-r border-gray-200 fixed inset-y-0 left-0 z-30">
+      <aside className="hidden md:flex flex-col w-60 shrink-0 bg-white border-r border-slate-200/80 fixed inset-y-0 left-0 z-30 shadow-sm">
         {/* Logo */}
-        <div className="h-14 flex items-center px-4 border-b border-gray-200">
+        <div className="h-16 flex items-center px-6 border-b border-slate-100">
           <Link to="/" className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center text-white font-black text-sm">
+            <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-black text-sm shadow-md shadow-indigo-600/25">
               Q
             </div>
-            <span className="font-bold text-gray-900 text-[15px] tracking-tight">Quad</span>
+            <span className="font-extrabold text-slate-900 text-lg tracking-tight">Quad</span>
           </Link>
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
+        <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
           {visibleNav.map((item) => {
             const Icon = item.icon;
             const isActive =
@@ -87,16 +86,16 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
               <Link
                 key={item.path}
                 to={item.path}
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
                   isActive
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    ? 'bg-indigo-550/10 bg-indigo-50 text-indigo-700'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
-                <Icon size={16} className={isActive ? 'text-blue-600' : 'text-gray-400'} />
+                <Icon size={16} className={isActive ? 'text-indigo-600' : 'text-slate-400'} />
                 {item.name}
                 {item.badge && (
-                  <span className="ml-auto text-[10px] font-semibold bg-blue-100 text-blue-700 rounded-full px-1.5 py-0.5">
+                  <span className="ml-auto text-[10px] font-bold bg-indigo-100 text-indigo-700 rounded-full px-2 py-0.5">
                     {item.badge}
                   </span>
                 )}
@@ -106,36 +105,36 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         </nav>
 
         {/* Bottom user */}
-        <div className="border-t border-gray-200 p-3">
+        <div className="border-t border-slate-100 p-4">
           {user && (
             <div className="relative">
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
-                className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-gray-100 transition-colors text-left"
+                className="w-full flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-slate-50 transition-colors text-left"
               >
-                <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold shrink-0">
+                <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-black shrink-0">
                   {user.avatar_initial || user.username[0].toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 truncate leading-tight">
+                  <p className="text-sm font-bold text-slate-900 truncate leading-tight">
                     {user.display_name || user.username}
                   </p>
-                  <p className="text-xs text-gray-500 truncate capitalize">{user.role}</p>
+                  <p className="text-xs text-slate-400 font-semibold truncate capitalize mt-0.5">{user.role}</p>
                 </div>
-                <ChevronDown size={14} className="text-gray-400 shrink-0" />
+                <ChevronDown size={14} className="text-slate-400 shrink-0" />
               </button>
               {userMenuOpen && (
-                <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-50">
+                <div className="absolute bottom-full left-0 right-0 mb-2 bg-white border border-slate-200/80 rounded-2xl shadow-xl py-1.5 z-50">
                   <Link
                     to="/profile"
                     onClick={() => setUserMenuOpen(false)}
-                    className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                   >
-                    <User size={14} className="text-gray-400" /> Profile
+                    <User size={14} className="text-slate-400" /> Profile
                   </Link>
                   <button
                     onClick={handleLogout}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                    className="w-full flex items-center gap-2 px-4 py-2 text-sm font-semibold text-rose-650 text-rose-600 hover:bg-rose-50/50"
                   >
                     <LogOut size={14} /> Sign out
                   </button>
@@ -147,29 +146,29 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       </aside>
 
       {/* Main content area */}
-      <div className="flex-1 md:pl-56 flex flex-col min-h-screen">
+      <div className="flex-1 md:pl-60 flex flex-col min-h-screen">
         {/* Top header */}
-        <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 sticky top-0 z-20">
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-gray-400 font-medium">quad</span>
-            <span className="text-gray-300">/</span>
-            <span className="font-semibold text-gray-900">{crumbLabel}</span>
+        <header className="h-16 bg-white border-b border-slate-200/80 flex items-center justify-between px-8 sticky top-0 z-20 shadow-sm">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <span className="text-slate-400">quad</span>
+            <span className="text-slate-300">/</span>
+            <span className="text-slate-900 font-bold">{crumbLabel}</span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             {user && <NotificationBell />}
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-              <span className="text-xs text-gray-400 font-mono">live</span>
+            <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-xl">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+              <span className="text-xs text-emerald-700 font-bold uppercase tracking-wider">live</span>
             </div>
           </div>
         </header>
 
         {/* Page content */}
-        <main className="flex-1 p-6 pb-20 md:pb-6">{children}</main>
+        <main className="flex-1 p-8 pb-24 md:pb-8">{children}</main>
       </div>
 
       {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white border-t border-gray-200 flex items-center justify-around z-40">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white border-t border-slate-200/80 flex items-center justify-around z-40 shadow-lg">
         {MOBILE_ITEMS.map((item) => {
           const Icon = item.icon;
           const isActive =
@@ -179,12 +178,12 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             <Link
               key={item.path}
               to={item.path}
-              className={`flex flex-col items-center justify-center gap-1 flex-1 h-full transition-colors ${
-                isActive ? 'text-blue-600' : 'text-gray-400'
+              className={`flex flex-col items-center justify-center gap-1.5 flex-1 h-full transition-colors ${
+                isActive ? 'text-indigo-600' : 'text-slate-400'
               }`}
             >
-              <Icon size={20} />
-              <span className="text-[10px] font-medium">{item.name}</span>
+              <Icon size={18} />
+              <span className="text-[10px] font-bold">{item.name}</span>
             </Link>
           );
         })}
