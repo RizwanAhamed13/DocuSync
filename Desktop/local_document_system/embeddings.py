@@ -1,9 +1,15 @@
+from __future__ import annotations
+__import__('pysqlite3')
+import sys
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+
 import os
 
 import chromadb
 from sentence_transformers import SentenceTransformer
 
-EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", "BAAI/bge-base-en-v1.5")
+EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "32"))
 
 _embedding_model: SentenceTransformer | None = None
 _chroma_client = None
@@ -14,7 +20,7 @@ def get_embedding_model() -> SentenceTransformer:
     global _embedding_model
     if _embedding_model is None:
         print(f"Loading embedding model ({EMBEDDING_MODEL_NAME})…")
-        _embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+        _embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME, trust_remote_code=True, device="cpu")
     return _embedding_model
 
 

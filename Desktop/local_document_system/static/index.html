@@ -1,145 +1,17 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DocuSync - Local Semantic Search & Document Analyzer</title>
-    <!-- Google Fonts Outfit & Inter -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <!-- FontAwesome for Premium Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DocuSync</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+  <script type="module" crossorigin src="/assets/index-CUgk5p83.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-B_8Wdnk3.css">
 </head>
-<body>
-    <div class="app-container">
-        <!-- Sidebar Navigation & Filters -->
-        <aside class="sidebar">
-            <div class="brand">
-                <i class="fa-solid fa-brain-circuit logo-icon"></i>
-                <div class="brand-text">
-                    <h1>DocuSync</h1>
-                    <span>100% Local RAG Engine</span>
-                </div>
-            </div>
-
-            <!-- Status Dashboard Widget -->
-            <div class="status-dashboard">
-                <div class="stat-card">
-                    <span class="stat-num" id="statCompleted">0</span>
-                    <span class="stat-label">Indexed</span>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-num" id="statProcessing">0</span>
-                    <span class="stat-label">Queued</span>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-num" id="statFailed">0</span>
-                    <span class="stat-label">Failed</span>
-                </div>
-            </div>
-
-            <!-- Upload Box -->
-            <div class="upload-section">
-                <h2>Upload Documents</h2>
-                <div id="dropzone" class="dropzone">
-                    <input type="file" id="fileInput" multiple accept=".pdf,.docx,.txt,.md,.json" style="display: none;">
-                    <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
-                    <p>Drag & Drop files here</p>
-                    <span>or click to browse</span>
-                </div>
-            </div>
-
-            <!-- Scrollable Sidebar Content -->
-            <div class="sidebar-scrollable">
-                <!-- Tags Filter Wall -->
-                <div class="filter-section">
-                    <h3><i class="fa-solid fa-tags"></i> Tag Explorer</h3>
-                    <div id="tagCloud" class="tag-cloud">
-                        <p class="empty-state">No tags available yet.</p>
-                    </div>
-                </div>
-
-                <!-- File List Panel -->
-                <div class="file-list-section">
-                    <h3><i class="fa-solid fa-folder-open"></i> Document Store</h3>
-                    <div id="fileList" class="file-list">
-                        <p class="empty-state">No documents uploaded.</p>
-                    </div>
-                </div>
-            </div>
-        </aside>
-
-        <!-- Main Workspace Area -->
-        <main class="main-workspace">
-            <!-- Top Search bar -->
-            <header class="workspace-header">
-                <div class="search-container">
-                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                    <input type="text" id="searchInput" placeholder="Search by meaning, keyword, or course code... (e.g., 'CS 568', 'attendance policy', 'chemistry')" autocomplete="off">
-                    <button id="searchButton" class="btn btn-primary">Search</button>
-                </div>
-            </header>
-
-            <!-- Grid Split View -->
-            <div class="workspace-body">
-                <!-- Search Results (Left Column) -->
-                <section class="results-column">
-                    <div class="section-header">
-                        <h2><i class="fa-solid fa-list-check"></i> Matching Contexts</h2>
-                        <span id="resultsCount" class="results-badge">0 Results</span>
-                    </div>
-                    <div id="searchResults" class="search-results-list">
-                        <div class="welcome-card">
-                            <i class="fa-solid fa-arrow-pointer welcome-icon"></i>
-                            <h3>Upload a document and start searching</h3>
-                            <p>DocuSync extracts your text, tags topics using local AI, and indexing into a semantic vector store.</p>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Document Inspector & Highlights (Right Column) -->
-                <section class="inspector-column">
-                    <div class="section-header">
-                        <h2><i class="fa-solid fa-magnifying-glass-chart"></i> Document Inspector</h2>
-                    </div>
-                    <div id="inspectorPanel" class="inspector-panel">
-                        <div class="empty-inspector">
-                            <i class="fa-solid fa-eye empty-icon"></i>
-                            <h3>Select a search result to inspect details</h3>
-                            <p>Click on any text match card on the left to read context, summaries, and extracted key takeaways.</p>
-                        </div>
-                    </div>
-                </section>
-            </div>
-        </main>
-    </div>
-
-    <!-- Notification Toast -->
-    <div id="toast" class="toast hidden">
-        <i class="fa-solid fa-info-circle toast-icon"></i>
-        <span id="toastMessage">File processing started...</span>
-    </div>
-
-    <!-- Full Document Modal -->
-    <div id="fullDocModal" class="modal hidden">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="modalTitle"><i class="fa-solid fa-file-lines"></i> Full Document View</h3>
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <a id="modalOriginalLink" href="#" target="_blank" class="btn btn-primary" style="font-size: 11px; padding: 6px 12px; text-decoration: none; display: flex; align-items: center; gap: 6px;">
-                        <i class="fa-solid fa-file-export"></i> Open Original File
-                    </a>
-                    <button class="close-modal-btn" onclick="closeModal()">&times;</button>
-                </div>
-            </div>
-            <div class="modal-body">
-                <div id="modalFullText" class="modal-full-text"></div>
-            </div>
-        </div>
-    </div>
-
-    <script src="app.js"></script>
+<body class="bg-[#f8f9ff] text-[#0b1c30]">
+  <div id="root"></div>
 </body>
 </html>

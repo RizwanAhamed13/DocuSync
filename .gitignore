@@ -1,0 +1,11 @@
+# ── Whitelist: only project folders are relevant ──────────────────────────────
+# Ignore everything at the home directory level by default,
+# then explicitly allow only the tracked project folders.
+
+/*
+!/.gitignore
+!/Desktop/
+
+/Desktop/*
+!/Desktop/local_document_system/
+!/Desktop/Bigger Picture/

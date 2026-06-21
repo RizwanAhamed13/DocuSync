@@ -1,0 +1,4 @@
+[2026-06-17T04:36:11.494859+00:00] Starting deployment pipeline (subprocess runner)...
+[2026-06-17T04:36:11.495418+00:00] Detecting stack in path: projects/verify-app-01
+[2026-06-17T04:36:11.496255+00:00] Detected stack: static (confidence: high)
+[2026-06-17T04:36:11.496260+00:00] Awaiting admin approval. Use POST /deploy/approve/{app_name} to start.
