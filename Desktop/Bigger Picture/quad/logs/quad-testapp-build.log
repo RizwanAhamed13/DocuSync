@@ -1,4 +1,0 @@
-[2026-06-16T17:47:20.738477+00:00] Starting deployment pipeline (subprocess runner)...
-[2026-06-16T17:47:20.739189+00:00] Detecting stack in path: projects/testapp
-[2026-06-16T17:47:20.740026+00:00] Detected stack: python (confidence: high)
-[2026-06-16T17:47:20.740031+00:00] Awaiting admin approval. Use POST /deploy/approve/{app_name} to start.

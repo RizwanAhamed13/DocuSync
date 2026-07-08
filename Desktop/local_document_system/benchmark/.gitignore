@@ -1,6 +1,0 @@
-*.pyc
-qa_metric_cache*
-*.DS_Store*
-*__pycache__*
-*.json
-*.csv

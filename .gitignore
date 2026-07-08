@@ -1,11 +1,34 @@
-# ── Whitelist: only project folders are relevant ──────────────────────────────
-# Ignore everything at the home directory level by default,
-# then explicitly allow only the tracked project folders.
+# ── Runtime data — never commit ───────────────────────────────────────────────
+uploads/
+vector_store/
+document_metadata.db
+document_metadata.db-shm
+document_metadata.db-wal
 
-/*
-!/.gitignore
-!/Desktop/
+# ── Model caches (large, re-downloadable) ─────────────────────────────────────
+.paddlex/
+.paddle/
+.cache/
 
-/Desktop/*
-!/Desktop/local_document_system/
-!/Desktop/Bigger Picture/
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+
+# ── Env vars ──────────────────────────────────────────────────────────────────
+.env
+.env.*

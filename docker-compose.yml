@@ -1,0 +1,41 @@
+services:
+
+  docusync:
+    build: .
+    container_name: docusync
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./uploads:/app/uploads
+      - ./vector_store:/app/vector_store
+      - ./document_metadata.db:/app/document_metadata.db
+    environment:
+      - PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
+      - EMBEDDING_MODEL=Alibaba-NLP/gte-large-en-v1.5
+      - RERANKER_MODEL=Alibaba-NLP/gte-reranker-modernbert-base
+      - SUMMARIZER_MODEL=facebook/bart-large-cnn
+      - CLASSIFIER_MODEL=MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli
+      - USE_OLLAMA_TAGGING=false
+      - OCR_WARMUP_ON_STARTUP=true
+      - DOCUSYNC_UPLOAD_DIR=/app/uploads
+      - DOCUSYNC_VECTOR_DIR=/app/vector_store
+      - DOCUSYNC_DB_PATH=/app/document_metadata.db
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  docusync-nginx:
+    image: nginx:alpine
+    container_name: docusync-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx:/etc/nginx/conf.d
+    depends_on:
+      - docusync

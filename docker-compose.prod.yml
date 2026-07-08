@@ -1,0 +1,30 @@
+services:
+  docusync:
+    image: ${DOCUSYNC_IMAGE:-ghcr.io/rizwanahamed13/docusync:latest}
+    container_name: docusync
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-80}:8000"
+    volumes:
+      - ${DOCUSYNC_DATA_DIR:-/opt/docusync}/uploads:/app/uploads
+      - ${DOCUSYNC_DATA_DIR:-/opt/docusync}/vector_store:/app/vector_store
+      - ${DOCUSYNC_DATA_DIR:-/opt/docusync}/document_metadata.db:/app/document_metadata.db
+    environment:
+      PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
+      PYTHONUNBUFFERED: "1"
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-Alibaba-NLP/gte-large-en-v1.5}
+      RERANKER_MODEL: ${RERANKER_MODEL:-Alibaba-NLP/gte-reranker-modernbert-base}
+      SUMMARIZER_MODEL: ${SUMMARIZER_MODEL:-facebook/bart-large-cnn}
+      CLASSIFIER_MODEL: ${CLASSIFIER_MODEL:-MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli}
+      USE_OLLAMA_TAGGING: ${USE_OLLAMA_TAGGING:-false}
+      OCR_WARMUP_ON_STARTUP: ${OCR_WARMUP_ON_STARTUP:-true}
+      DOCUSYNC_UPLOAD_DIR: /app/uploads
+      DOCUSYNC_VECTOR_DIR: /app/vector_store
+      DOCUSYNC_DB_PATH: /app/document_metadata.db
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

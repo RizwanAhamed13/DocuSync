@@ -1,5 +1,0 @@
-[2026-06-16T17:36:28.605809+00:00] Template deployment initiated.
-[2026-06-16T17:36:28.605850+00:00] Stack: Python
-[2026-06-16T17:36:28.605853+00:00] Template slug: flask-app
-[2026-06-16T17:36:28.605856+00:00] Extracted files successfully.
-[2026-06-16T17:36:28.605858+00:00] Starting application subprocess...

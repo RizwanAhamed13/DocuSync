@@ -1,0 +1,43 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: Image to deploy
+        required: false
+        default: ghcr.io/rizwanahamed13/docusync:latest
+
+jobs:
+  deploy:
+    name: Deploy image over SSH
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Copy compose file
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DOCUSYNC_SSH_HOST }}
+          username: ${{ secrets.DOCUSYNC_SSH_USER }}
+          key: ${{ secrets.DOCUSYNC_SSH_KEY }}
+          source: docker-compose.prod.yml
+          target: /opt/docusync
+      - name: Pull and restart
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DOCUSYNC_IMAGE: ${{ inputs.image }}
+          APP_PORT: ${{ vars.APP_PORT || '80' }}
+          DOCUSYNC_DATA_DIR: /opt/docusync/data
+        with:
+          host: ${{ secrets.DOCUSYNC_SSH_HOST }}
+          username: ${{ secrets.DOCUSYNC_SSH_USER }}
+          key: ${{ secrets.DOCUSYNC_SSH_KEY }}
+          envs: DOCUSYNC_IMAGE,APP_PORT,DOCUSYNC_DATA_DIR
+          script: |
+            set -euo pipefail
+            mkdir -p "$DOCUSYNC_DATA_DIR/uploads" "$DOCUSYNC_DATA_DIR/vector_store"
+            touch "$DOCUSYNC_DATA_DIR/document_metadata.db"
+            cd /opt/docusync
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d
+            docker ps --filter name=docusync

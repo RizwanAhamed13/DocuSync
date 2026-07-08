@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DocuSync — How It Works</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&family=Lora:ital@0;1&display=swap');
+</style>
+<style>
+:root{
+  --bg:#070912; --bg2:#0c0f1d; --panel:rgba(20,24,42,.65); --panel2:rgba(28,33,58,.6);
+  --line:rgba(120,140,200,.14); --line2:rgba(120,140,200,.28);
+  --ink:#eef1fb; --ink2:#aab3d4; --ink3:#6b749b;
+  --blue:#4d8dff; --cyan:#34e0e6; --violet:#9d6bff; --pink:#ff5fa2; --green:#42e29b; --amber:#ffb340; --red:#ff5a5a;
+  --glass:blur(22px) saturate(160%);
+  --r:18px; --rs:12px;
+  --spring:cubic-bezier(.34,1.56,.64,1); --ease:cubic-bezier(.4,0,.2,1);
+  --font:'Inter',system-ui,sans-serif; --mono:'JetBrains Mono',monospace; --serif:'Lora',serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  font-family:var(--font); background:var(--bg); color:var(--ink);
+  overflow-x:hidden; line-height:1.6; -webkit-font-smoothing:antialiased;
+}
+#bgCanvas{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.6}
+.aurora{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.aurora span{position:absolute;border-radius:50%;filter:blur(110px);opacity:.5;animation:drift 22s ease-in-out infinite}
+.aurora .a1{width:600px;height:600px;background:radial-gradient(circle,#2a4dff,transparent 70%);top:-200px;left:-150px}
+.aurora .a2{width:520px;height:520px;background:radial-gradient(circle,#9d6bff,transparent 70%);top:30%;right:-180px;animation-delay:-7s}
+.aurora .a3{width:480px;height:480px;background:radial-gradient(circle,#34e0e6,transparent 70%);bottom:-150px;left:30%;animation-delay:-13s}
+@keyframes drift{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(80px,-50px) scale(1.15)}66%{transform:translate(-60px,40px) scale(.9)}}
+
+/* ── NAV ── */
+.dotnav{position:fixed;right:26px;top:50%;transform:translateY(-50%);z-index:50;display:flex;flex-direction:column;gap:16px}
+.dotnav a{width:11px;height:11px;border-radius:50%;background:rgba(160,175,220,.22);position:relative;transition:.3s var(--spring);cursor:pointer}
+.dotnav a::after{content:attr(data-l);position:absolute;right:22px;top:50%;transform:translateY(-50%) translateX(8px);white-space:nowrap;font-size:11px;font-weight:600;letter-spacing:.04em;color:var(--ink2);background:var(--panel);backdrop-filter:var(--glass);border:1px solid var(--line);padding:5px 11px;border-radius:8px;opacity:0;pointer-events:none;transition:.25s var(--ease)}
+.dotnav a:hover::after{opacity:1;transform:translateY(-50%) translateX(0)}
+.dotnav a.on{background:var(--cyan);box-shadow:0 0 0 5px rgba(52,224,230,.18);transform:scale(1.25)}
+
+.topbar{position:fixed;top:0;left:0;right:0;z-index:40;display:flex;align-items:center;justify-content:space-between;padding:18px 34px;backdrop-filter:var(--glass);background:linear-gradient(180deg,rgba(7,9,18,.85),transparent);transition:.4s}
+.topbar.solid{background:rgba(7,9,18,.82);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:19px;letter-spacing:-.02em}
+.brand .logo{width:34px;height:34px;border-radius:10px;background:conic-gradient(from 140deg,var(--blue),var(--violet),var(--cyan),var(--blue));display:grid;place-items:center;box-shadow:0 6px 22px rgba(77,141,255,.45);animation:spin 12s linear infinite}
+.brand .logo b{font-size:18px;color:#fff;animation:spin 12s linear infinite reverse}
+@keyframes spin{to{transform:rotate(360deg)}}
+.brand small{display:block;font-size:10px;font-weight:500;color:var(--ink3);letter-spacing:.18em;text-transform:uppercase}
+.topbar .pill{font-size:11px;font-weight:600;color:var(--green);background:rgba(66,226,155,.12);border:1px solid rgba(66,226,155,.3);padding:6px 13px;border-radius:30px;display:flex;align-items:center;gap:7px}
+.topbar .pill::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 0 rgba(66,226,155,.6);animation:pulse 2s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(66,226,155,.5)}70%{box-shadow:0 0 0 9px rgba(66,226,155,0)}100%{box-shadow:0 0 0 0 rgba(66,226,155,0)}}
+
+/* ── LAYOUT ── */
+section{position:relative;z-index:2;padding:120px 8vw;max-width:1400px;margin:0 auto}
+.eyebrow{display:inline-flex;align-items:center;gap:9px;font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--cyan);margin-bottom:20px}
+.eyebrow::before{content:'';width:28px;height:2px;background:linear-gradient(90deg,var(--cyan),transparent)}
+h1{font-size:clamp(40px,7vw,86px);font-weight:900;line-height:1.02;letter-spacing:-.03em}
+h2{font-size:clamp(30px,4.4vw,52px);font-weight:800;letter-spacing:-.025em;line-height:1.08}
+.sub{font-size:clamp(16px,1.6vw,19px);color:var(--ink2);max-width:680px;margin-top:22px;font-weight:400}
+.grad{background:linear-gradient(110deg,var(--blue),var(--cyan) 40%,var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
+.reveal{opacity:1;transform:none}
+.reveal.will-reveal{opacity:0;transform:translateY(32px);transition:opacity 0.9s var(--spring),transform 0.9s var(--spring)}
+.reveal.will-reveal.in{opacity:1;transform:none}
+
+/* ── HERO ── */
+.hero{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding-top:120px}
+.hero h1{max-width:14ch}
+.hero-tags{display:flex;flex-wrap:wrap;gap:12px;margin-top:40px}
+.htag{font-size:13px;font-weight:600;padding:9px 16px;border-radius:30px;background:var(--panel);backdrop-filter:var(--glass);border:1px solid var(--line);color:var(--ink2);transition:.3s var(--spring)}
+.htag:hover{border-color:var(--line2);transform:translateY(-3px);color:var(--ink)}
+.htag b{color:var(--cyan)}
+.scrolltip{margin-top:70px;display:flex;align-items:center;gap:12px;color:var(--ink3);font-size:13px;font-weight:500}
+.mouse{width:24px;height:38px;border:2px solid var(--ink3);border-radius:14px;position:relative}
+.mouse::after{content:'';position:absolute;top:7px;left:50%;transform:translateX(-50%);width:4px;height:7px;background:var(--cyan);border-radius:3px;animation:scrolld 1.6s infinite}
+@keyframes scrolld{0%{opacity:0;transform:translateX(-50%) translateY(0)}40%{opacity:1}80%{opacity:0;transform:translateX(-50%) translateY(12px)}}
+
+/* ── STAT STRIP ── */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-top:64px}
+.stat{background:var(--panel);backdrop-filter:var(--glass);border:1px solid var(--line);border-radius:var(--r);padding:26px 24px;position:relative;overflow:hidden;transition:.4s var(--spring)}
+.stat:hover{transform:translateY(-6px);border-color:var(--line2)}
+.stat::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--blue),var(--cyan));transform:scaleX(0);transform-origin:left;transition:.6s var(--ease)}
+.stat:hover::before{transform:scaleX(1)}
+.stat .n{font-size:44px;font-weight:900;letter-spacing:-.03em;font-family:var(--mono);line-height:1}
+.stat .l{font-size:13px;color:var(--ink2);margin-top:10px;font-weight:500}
+
+/* ── ARCHITECTURE STACK ── */
+.archwrap{margin-top:60px;display:flex;flex-direction:column;gap:18px}
+.layer{display:grid;grid-template-columns:200px 1fr;gap:26px;align-items:center;background:var(--panel);backdrop-filter:var(--glass);border:1px solid var(--line);border-radius:var(--r);padding:24px 28px;position:relative;transition:.5s var(--spring);cursor:default;overflow:hidden}
+.layer::after{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--cc);opacity:.85}
+.layer:hover{transform:scale(1.015);border-color:var(--line2);background:var(--panel2)}
+.layer .lh{display:flex;flex-direction:column;gap:5px}
+.layer .lh .ico{width:46px;height:46px;border-radius:12px;background:color-mix(in srgb,var(--cc) 18%,transparent);display:grid;place-items:center;font-size:24px;margin-bottom:8px}
+.layer .lh h3{font-size:18px;font-weight:800}
+.layer .lh span{font-size:12px;color:var(--ink3);font-family:var(--mono)}
+.chips{display:flex;flex-wrap:wrap;gap:9px}
+.chip{font-size:12.5px;font-weight:600;padding:7px 13px;border-radius:9px;background:rgba(255,255,255,.04);border:1px solid var(--line);color:var(--ink2);transition:.25s var(--spring)}
+.chip:hover{background:color-mix(in srgb,var(--cc) 16%,transparent);border-color:var(--cc);color:var(--ink);transform:translateY(-2px)}
+.flowarrow{text-align:center;color:var(--ink3);font-size:22px;animation:bobdown 2s infinite}
+@keyframes bobdown{0%,100%{transform:translateY(0);opacity:.4}50%{transform:translateY(6px);opacity:1}}
+
+/* ── PIPELINE ── */
+.pipehead{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:20px;margin-top:50px}
+.playbtn{display:inline-flex;align-items:center;gap:11px;font-size:15px;font-weight:700;color:#06121f;background:linear-gradient(110deg,var(--cyan),var(--blue));border:none;padding:14px 26px;border-radius:30px;cursor:pointer;box-shadow:0 10px 30px rgba(52,224,230,.3);transition:.3s var(--spring)}
+.playbtn:hover{transform:translateY(-3px) scale(1.03);box-shadow:0 14px 38px rgba(52,224,230,.45)}
+.playbtn:active{transform:scale(.97)}
+.playbtn .ic{font-size:18px}
+
+.pipe{margin-top:46px;position:relative;display:grid;grid-template-columns:repeat(6,1fr);gap:14px}
+.pnode{background:var(--panel);backdrop-filter:var(--glass);border:1px solid var(--line);border-radius:var(--r);padding:22px 18px;cursor:pointer;position:relative;transition:.4s var(--spring);min-height:184px;display:flex;flex-direction:column}
+.pnode:hover{transform:translateY(-6px);border-color:var(--cc);background:var(--panel2)}
+.pnode.active{border-color:var(--cc);box-shadow:0 0 0 1px var(--cc),0 12px 40px color-mix(in srgb,var(--cc) 30%,transparent);transform:translateY(-8px) scale(1.03);background:var(--panel2)}
+.pnode .step{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--cc);letter-spacing:.05em}
+.pnode .pico{width:48px;height:48px;border-radius:13px;background:color-mix(in srgb,var(--cc) 16%,transparent);display:grid;place-items:center;font-size:25px;margin:14px 0 12px;transition:.4s var(--spring)}
+.pnode.active .pico{transform:scale(1.12) rotate(-6deg)}
+.pnode h4{font-size:15.5px;font-weight:800;letter-spacing:-.01em}
+.pnode p{font-size:12px;color:var(--ink3);margin-top:7px;font-weight:500;line-height:1.45}
+.pnode .tech{margin-top:auto;font-size:10.5px;font-family:var(--mono);color:var(--cc);font-weight:600;padding-top:10px}
+@media(max-width:1000px){.pipe{grid-template-columns:repeat(2,1fr)}.stats{grid-template-columns:repeat(2,1fr)}.layer{grid-template-columns:1fr}}
+
+/* travelling packet */
+.packet{position:absolute;width:18px;height:18px;border-radius:50%;background:radial-gradient(circle,#fff,var(--cyan));box-shadow:0 0 22px 8px rgba(52,224,230,.7);z-index:5;opacity:0;pointer-events:none;top:50%}
+
+/* detail drawer */
+.drawer{margin-top:26px;background:var(--panel);backdrop-filter:var(--glass);border:1px solid var(--line2);border-radius:var(--r);overflow:hidden;max-height:0;opacity:0;transition:.5s var(--ease)}
+.drawer.open{max-height:520px;opacity:1;padding:0}
+.drawer-in{padding:34px 38px;display:grid;grid-template-columns:1.3fr 1fr;gap:38px}
+.drawer h3{font-size:24px;font-weight:800;display:flex;align-items:center;gap:13px}
+.drawer h3 .dico{width:44px;height:44px;border-radius:12px;background:color-mix(in srgb,var(--cc) 20%,transparent);display:grid;place-items:center;font-size:23px}
+.drawer .what{font-size:15px;color:var(--ink2);margin-top:16px;line-height:1.7}
+.drawer ul{margin-top:18px;list-style:none;display:flex;flex-direction:column;gap:11px}
+.drawer li{font-size:13.5px;color:var(--ink2);display:flex;gap:11px;align-items:flex-start}
+.drawer li b{color:var(--ink)}
+.drawer li::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--cc);margin-top:8px;flex-shrink:0}
+.dcard{background:rgba(0,0,0,.28);border:1px solid var(--line);border-radius:var(--rs);padding:20px}
+.dcard .dk{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3)}
+.dcard .dmodel{font-family:var(--mono);font-size:14px;font-weight:600;color:var(--cc);margin-top:8px;word-break:break-all}
+.dmeta{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
+.dmeta span{font-size:11px;font-family:var(--mono);color:var(--ink2);background:rgba(255,255,255,.04);border:1px solid var(--line);padding:5px 10px;border-radius:7px}
+@media(max-width:860px){.drawer-in{grid-template-columns:1fr;gap:22px}}
+
+/* ── MODELS ── */
+.mgrid{margin-top:54px;display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.mcard{background:var(--panel);backdrop-filter:var(--glass);border:1px solid var(--line);border-radius:var(--r);padding:28px;position:relative;overflow:hidden;transition:.45s var(--spring)}
+.mcard:hover{transform:translateY(-8px);border-color:var(--cc)}
+.mcard .glow{position:absolute;width:160px;height:160px;border-radius:50%;background:var(--cc);filter:blur(70px);opacity:.18;top:-60px;right:-50px;transition:.5s}
+.mcard:hover .glow{opacity:.35}
+.mcard .mtag{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--cc)}
+.mcard h4{font-size:20px;font-weight:800;margin-top:14px;font-family:var(--mono);letter-spacing:-.02em;position:relative}
+.mcard .role{font-size:13px;color:var(--ink2);margin-top:12px;line-height:1.6;position:relative}
+.mcard .specs{display:flex;gap:8px;flex-wrap:wrap;margin-top:20px;position:relative}
+.mcard .specs span{font-size:11px;font-family:var(--mono);color:var(--ink2);background:rgba(255,255,255,.05);border:1px solid var(--line);padding:5px 9px;border-radius:7px}
+@media(max-width:1000px){.mgrid{grid-template-columns:1fr}}
+
+/* ── SEARCH DEMO ── */
+.searchdemo{margin-top:50px;background:var(--panel);backdrop-filter:var(--glass);border:1px solid var(--line2);border-radius:24px;padding:40px;position:relative;overflow:hidden}
+.sbar{display:flex;gap:12px;align-items:center;background:rgba(0,0,0,.32);border:1px solid var(--line);border-radius:16px;padding:8px 8px 8px 22px}
+.sbar input{flex:1;background:none;border:none;outline:none;color:var(--ink);font-size:16px;font-family:var(--font)}
+.sbar input::placeholder{color:var(--ink3)}
+.sbar button{font-size:14px;font-weight:700;color:#06121f;background:linear-gradient(110deg,var(--cyan),var(--blue));border:none;padding:13px 24px;border-radius:11px;cursor:pointer;transition:.25s var(--spring)}
+.sbar button:hover{transform:scale(1.04)}
+.examples{display:flex;gap:9px;flex-wrap:wrap;margin-top:16px}
+.ex{font-size:12px;color:var(--ink2);background:rgba(255,255,255,.04);border:1px solid var(--line);padding:7px 13px;border-radius:30px;cursor:pointer;transition:.25s var(--spring)}
+.ex:hover{border-color:var(--cyan);color:var(--ink);transform:translateY(-2px)}
+
+.sflow{margin-top:36px;display:grid;grid-template-columns:1fr 1fr;gap:18px;position:relative}
+.sbranch{background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:16px;padding:22px;opacity:.4;transition:.5s var(--spring)}
+.sbranch.lit{opacity:1;border-color:var(--cc)}
+.sbranch .bh{display:flex;align-items:center;gap:11px;font-weight:800;font-size:15px}
+.sbranch .bh .bi{width:38px;height:38px;border-radius:10px;background:color-mix(in srgb,var(--cc) 18%,transparent);display:grid;place-items:center;font-size:19px}
+.sbranch .bd{font-size:12px;color:var(--ink3);margin-top:8px;font-family:var(--mono)}
+.sresults{margin-top:10px;display:flex;flex-direction:column;gap:8px;min-height:30px}
+.srow{font-size:12.5px;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:9px;padding:9px 13px;display:flex;justify-content:space-between;gap:10px;opacity:0;transform:translateX(-12px);animation:rowin .5s var(--spring) forwards}
+.srow .sr-rank{font-family:var(--mono);color:var(--cc);font-weight:700}
+@keyframes rowin{to{opacity:1;transform:none}}
+
+.fusebox{margin-top:18px;background:linear-gradient(135deg,rgba(157,107,255,.12),rgba(52,224,230,.08));border:1px solid var(--line2);border-radius:16px;padding:24px;opacity:.4;transition:.6s var(--spring)}
+.fusebox.lit{opacity:1;border-color:var(--violet)}
+.fusebox .fh{display:flex;align-items:center;gap:12px;font-weight:800;font-size:16px}
+.fusebox .formula{font-family:var(--mono);font-size:13px;color:var(--cyan);background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin-top:16px;text-align:center;letter-spacing:.02em}
+.fusebox .formula b{color:var(--amber)}
+.finalres{margin-top:18px;display:flex;flex-direction:column;gap:10px}
+.fres{background:rgba(66,226,155,.07);border:1px solid rgba(66,226,155,.25);border-radius:12px;padding:14px 18px;display:flex;align-items:center;gap:16px;opacity:0;transform:translateY(14px);animation:rowin .55s var(--spring) forwards}
+.fres .medal{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;font-weight:800;font-family:var(--mono);font-size:14px;background:rgba(66,226,155,.15);color:var(--green);flex-shrink:0}
+.fres .ftit{font-weight:700;font-size:14px}
+.fres .fmeta{font-size:11.5px;color:var(--ink3);font-family:var(--mono)}
+.fres .score{margin-left:auto;font-family:var(--mono);font-weight:700;color:var(--green);font-size:15px}
+@media(max-width:860px){.sflow{grid-template-columns:1fr}}
+
+/* ── TECH STACK ── */
+.tgrid{margin-top:54px;display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.tcat{background:var(--panel);backdrop-filter:var(--glass);border:1px solid var(--line);border-radius:var(--r);padding:26px;transition:.4s var(--spring)}
+.tcat:hover{transform:translateY(-6px);border-color:var(--line2)}
+.tcat .th{display:flex;align-items:center;gap:12px;font-size:16px;font-weight:800;margin-bottom:18px}
+.tcat .th .ti{width:40px;height:40px;border-radius:11px;background:color-mix(in srgb,var(--cc) 16%,transparent);display:grid;place-items:center;font-size:20px}
+.tcat .row{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+.tcat .row:last-child{border:none}
+.tcat .row .rn{font-weight:600;color:var(--ink)}
+.tcat .row .rv{font-size:11.5px;font-family:var(--mono);color:var(--ink3);text-align:right}
+
+/* ── INFRA ── */
+.infra{margin-top:54px;display:grid;grid-template-columns:repeat(2,1fr);gap:22px}
+.ibox{background:var(--panel);backdrop-filter:var(--glass);border:1px solid var(--line);border-radius:var(--r);padding:30px;position:relative;overflow:hidden;transition:.4s var(--spring)}
+.ibox:hover{transform:translateY(-6px);border-color:var(--cc)}
+.ibox .ih{display:flex;align-items:center;gap:14px}
+.ibox .ih .ico{width:50px;height:50px;border-radius:13px;background:color-mix(in srgb,var(--cc) 16%,transparent);display:grid;place-items:center;font-size:26px}
+.ibox .ih h4{font-size:19px;font-weight:800}
+.ibox .ih span{font-size:12px;color:var(--ink3);font-family:var(--mono)}
+.ibox p{font-size:14px;color:var(--ink2);margin-top:18px;line-height:1.65}
+.ibox . flags{margin-top:18px}
+.iflags{display:flex;gap:9px;flex-wrap:wrap;margin-top:20px}
+.iflags span{font-size:11.5px;font-family:var(--mono);color:var(--ink2);background:rgba(255,255,255,.04);border:1px solid var(--line);padding:6px 11px;border-radius:8px}
+@media(max-width:860px){.infra{grid-template-columns:1fr}.tgrid{grid-template-columns:1fr}}
+
+/* boot order */
+.boot{margin-top:30px;display:flex;align-items:center;gap:0;flex-wrap:wrap}
+.bstep{display:flex;align-items:center;gap:14px}
+.bnode{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:11px;padding:12px 18px;font-size:13px;font-weight:700;display:flex;align-items:center;gap:9px}
+.bnode .bd{width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 10px var(--green)}
+.barrow{color:var(--ink3);font-size:20px;padding:0 12px}
+
+/* footer */
+footer{position:relative;z-index:2;text-align:center;padding:90px 8vw 70px;border-top:1px solid var(--line);margin-top:60px}
+footer .fbig{font-size:clamp(28px,4vw,46px);font-weight:900;letter-spacing:-.02em}
+footer .fsub{color:var(--ink2);margin-top:18px;font-size:16px}
+footer .flink{margin-top:34px;display:inline-flex;align-items:center;gap:10px;font-family:var(--mono);font-size:13px;color:var(--cyan);background:var(--panel);border:1px solid var(--line2);padding:13px 22px;border-radius:30px}
+footer .fcred{margin-top:40px;font-size:12px;color:var(--ink3)}
+
+.secthead{max-width:760px}
+::selection{background:rgba(52,224,230,.3)}
+::-webkit-scrollbar{width:11px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--line2);border-radius:6px;border:3px solid var(--bg)}
+</style>
+</head>
+<body>
+
+<canvas id="bgCanvas"></canvas>
+<div class="aurora"><span class="a1"></span><span class="a2"></span><span class="a3"></span></div>
+
+<!-- TOP BAR -->
+<div class="topbar" id="topbar">
+  <div class="brand">
+    <span class="logo"><b>◈</b></span>
+    <div>DocuSync<small>Local Document Intelligence</small></div>
+  </div>
+  <div class="pill">Running on RTX 4080 · CUDA</div>
+</div>
+
+<!-- DOT NAV -->
+<nav class="dotnav" id="dotnav">
+  <a data-l="Overview" href="#hero" class="on"></a>
+  <a data-l="What it is" href="#intro"></a>
+  <a data-l="Architecture" href="#arch"></a>
+  <a data-l="Ingestion" href="#ingest"></a>
+  <a data-l="AI Models" href="#models"></a>
+  <a data-l="Search" href="#search"></a>
+  <a data-l="Tech Stack" href="#stack"></a>
+  <a data-l="Infrastructure" href="#infra"></a>
+</nav>
+
+<!-- HERO -->
+<section class="hero" id="hero">
+  <div class="reveal in">
+    <span class="eyebrow">An Interactive Walkthrough</span>
+    <h1>The complete journey of a document, <span class="grad">visualised.</span></h1>
+    <p class="sub">DocuSync turns any uploaded document into a searchable, classified, AI-understood knowledge object — entirely on your own hardware. No cloud APIs, no data leaving the building. This is exactly what happens inside, step by step.</p>
+    <div class="hero-tags">
+      <div class="htag">⚡ <b>6</b> neural models on GPU</div>
+      <div class="htag">🔒 <b>100%</b> local & private</div>
+      <div class="htag">🧠 Hybrid <b>semantic + keyword</b> search</div>
+      <div class="htag">📊 <b>4-dimension</b> auto-classification</div>
+    </div>
+    <div class="scrolltip"><span class="mouse"></span> Scroll, or click the dots on the right to explore each stage</div>
+  </div>
+</section>
+
+<!-- INTRO / STATS -->
+<section id="intro">
+  <div class="secthead reveal">
+    <span class="eyebrow">The 30-second picture</span>
+    <h2>Two pipelines. One private brain for your documents.</h2>
+    <p class="sub">Every document flows through an <b style="color:var(--cyan)">Ingestion Pipeline</b> that reads, understands and indexes it. Every search flows through a <b style="color:var(--violet)">Retrieval Pipeline</b> that finds the most relevant passages using two complementary engines fused together. Both run on a single GPU server.</p>
+  </div>
+  <div class="stats">
+    <div class="stat reveal"><div class="n" data-to="768">0</div><div class="l">Dimensions per embedding vector (BGE)</div></div>
+    <div class="stat reveal"><div class="n" data-to="6">0</div><div class="l">Specialised AI models in the stack</div></div>
+    <div class="stat reveal"><div class="n" data-to="4">0</div><div class="l">Classification dimensions per doc</div></div>
+    <div class="stat reveal"><div class="n" data-to="90" data-suf="ms">0</div><div class="l">Typical warm search latency</div></div>
+  </div>
+</section>
+
+<!-- ARCHITECTURE -->
+<section id="arch">
+  <div class="secthead reveal">
+    <span class="eyebrow">System Architecture</span>
+    <h2>Four layers, talking to each other.</h2>
+    <p class="sub">A request travels top-to-bottom: the browser calls the API, the API orchestrates the models, the models read & write to the two storage engines. Hover any layer to explore its components.</p>
+  </div>
+  <div class="archwrap">
+    <div class="layer reveal" style="--cc:var(--blue)">
+      <div class="lh"><div class="ico">🖥️</div><h3>Presentation</h3><span>React SPA</span></div>
+      <div class="chips">
+        <span class="chip">React 18</span><span class="chip">Vite 8</span><span class="chip">Custom CSS engine</span><span class="chip">Drag-drop upload</span><span class="chip">Live inspector panel</span><span class="chip">Tag directory</span>
+      </div>
+    </div>
+    <div class="flowarrow">▼</div>
+    <div class="layer reveal" style="--cc:var(--cyan)">
+      <div class="lh"><div class="ico">⚙️</div><h3>Application</h3><span>FastAPI · Python</span></div>
+      <div class="chips">
+        <span class="chip">FastAPI + Uvicorn</span><span class="chip">Async ingestion tasks</span><span class="chip">GPU semaphore</span><span class="chip">/upload</span><span class="chip">/search</span><span class="chip">/documents</span><span class="chip">/tags</span><span class="chip">/retag-ai</span>
+      </div>
+    </div>
+    <div class="flowarrow">▼</div>
+    <div class="layer reveal" style="--cc:var(--violet)">
+      <div class="lh"><div class="ico">🧠</div><h3>Intelligence</h3><span>Neural models · CUDA</span></div>
+      <div class="chips">
+        <span class="chip">BGE embeddings</span><span class="chip">GTE reranker</span><span class="chip">DeBERTa-v3 NLI</span><span class="chip">DistilBART summary</span><span class="chip">PaddleOCR + Tesseract</span><span class="chip">YAKE + TF-IDF</span>
+      </div>
+    </div>
+    <div class="flowarrow">▼</div>
+    <div class="layer reveal" style="--cc:var(--green)">
+      <div class="lh"><div class="ico">🗄️</div><h3>Storage</h3><span>Dual store</span></div>
+      <div class="chips">
+        <span class="chip">ChromaDB · HNSW cosine</span><span class="chip">SQLite · FTS5 porter</span><span class="chip">Metadata tables</span><span class="chip">WAL mode</span><span class="chip">Original file store</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- INGESTION PIPELINE -->
+<section id="ingest">
+  <div class="pipehead">
+    <div class="secthead reveal">
+      <span class="eyebrow">Pipeline 1 · Ingestion</span>
+      <h2>From raw upload to searchable knowledge.</h2>
+      <p class="sub">Click any stage to open its details. Or press <b style="color:var(--cyan)">Play</b> to watch a document travel through the whole pipeline.</p>
+    </div>
+    <button class="playbtn reveal" id="playIngest"><span class="ic">▶</span> Play the pipeline</button>
+  </div>
+
+  <div class="pipe reveal" id="ingestPipe">
+    <div class="packet" id="packet"></div>
+    <div class="pnode" data-i="0" style="--cc:var(--blue)">
+      <div class="step">STEP 01</div>
+      <div class="pico">📤</div>
+      <h4>Upload</h4>
+      <p>File arrives via drag-drop or browse as multipart form data.</p>
+      <div class="tech">FastAPI · UploadFile</div>
+    </div>
+    <div class="pnode" data-i="1" style="--cc:var(--cyan)">
+      <div class="step">STEP 02</div>
+      <div class="pico">📖</div>
+      <h4>Parse &amp; OCR</h4>
+      <p>Text extracted page by page. Scanned pages fall back to OCR.</p>
+      <div class="tech">PyMuPDF · PaddleOCR</div>
+    </div>
+    <div class="pnode" data-i="2" style="--cc:var(--violet)">
+      <div class="step">STEP 03</div>
+      <div class="pico">🧠</div>
+      <h4>AI Analysis</h4>
+      <p>Summary, 4-D classification, keywords & findings — on GPU.</p>
+      <div class="tech">DeBERTa · DistilBART</div>
+    </div>
+    <div class="pnode" data-i="3" style="--cc:var(--pink)">
+      <div class="step">STEP 04</div>
+      <div class="pico">✂️</div>
+      <h4>Chunking</h4>
+      <p>Split into sentence-aware overlapping passages.</p>
+      <div class="tech">900 chars · 2-sent overlap</div>
+    </div>
+    <div class="pnode" data-i="4" style="--cc:var(--amber)">
+      <div class="step">STEP 05</div>
+      <div class="pico">🔢</div>
+      <h4>Embedding</h4>
+      <p>Each chunk becomes a 768-dim semantic vector.</p>
+      <div class="tech">BGE-base-en-v1.5</div>
+    </div>
+    <div class="pnode" data-i="5" style="--cc:var(--green)">
+      <div class="step">STEP 06</div>
+      <div class="pico">🗄️</div>
+      <h4>Index &amp; Store</h4>
+      <p>Vectors → ChromaDB, text → FTS5, metadata → SQLite.</p>
+      <div class="tech">HNSW · FTS5 · SQLite</div>
+    </div>
+  </div>
+
+  <div class="drawer" id="ingestDrawer"><div class="drawer-in" id="drawerContent"></div></div>
+</section>
+
+<!-- MODELS -->
+<section id="models">
+  <div class="secthead reveal">
+    <span class="eyebrow">The AI Brain</span>
+    <h2>Six specialised models — each doing one job brilliantly.</h2>
+    <p class="sub">DocuSync deliberately uses small, focused models instead of one giant LLM. They're faster, fully local, and auto-detect the best device (CUDA → MPS → CPU). GPU inference is serialised by a semaphore so models never collide in memory.</p>
+  </div>
+  <div class="mgrid">
+    <div class="mcard reveal" style="--cc:var(--amber)"><div class="glow"></div>
+      <div class="mtag">Embeddings · Bi-encoder</div>
+      <h4>BGE-base-en-v1.5</h4>
+      <div class="role">Converts every chunk and every query into a 768-dimensional vector so meaning can be compared by cosine distance. The backbone of semantic search.</div>
+      <div class="specs"><span>768-dim</span><span>BAAI</span><span>CUDA</span></div>
+    </div>
+    <div class="mcard reveal" style="--cc:var(--cyan)"><div class="glow"></div>
+      <div class="mtag">Reranking · Cross-encoder</div>
+      <h4>GTE-Reranker-ModernBERT</h4>
+      <div class="role">Reads the query and a candidate passage <i>together</i> to judge true relevance — far more accurate than vector distance. Applied to the top candidates only.</div>
+      <div class="specs"><span>max_len 256</span><span>Alibaba-NLP</span><span>top 15–30</span></div>
+    </div>
+    <div class="mcard reveal" style="--cc:var(--violet)"><div class="glow"></div>
+      <div class="mtag">Classification · Zero-shot NLI</div>
+      <h4>DeBERTa-v3-large-MNLI</h4>
+      <div class="role">Labels each document across 4 dimensions — Subject, Field, Document Type, Methodology — without any training data, using natural-language inference at a 0.35 confidence threshold.</div>
+      <div class="specs"><span>zero-shot</span><span>4 dimensions</span><span>thr 0.35</span></div>
+    </div>
+    <div class="mcard reveal" style="--cc:var(--pink)"><div class="glow"></div>
+      <div class="mtag">Summarisation · Seq2seq</div>
+      <h4>DistilBART-CNN-12-6</h4>
+      <div class="role">Produces a short abstractive summary that rephrases what each document is about — shown in the inspector's AI Summary panel.</div>
+      <div class="specs"><span>abstractive</span><span>distilled BART</span><span>CUDA</span></div>
+    </div>
+    <div class="mcard reveal" style="--cc:var(--blue)"><div class="glow"></div>
+      <div class="mtag">OCR · Vision ensemble</div>
+      <h4>PaddleOCR + Tesseract</h4>
+      <div class="role">When a PDF page has no extractable text (scanned image), the page is rasterised and read by an OCR ensemble so even scans become fully searchable.</div>
+      <div class="specs"><span>PP-OCRv5</span><span>Tesseract 5</span><span>fallback</span></div>
+    </div>
+    <div class="mcard reveal" style="--cc:var(--green)"><div class="glow"></div>
+      <div class="mtag">Keywords · Statistical</div>
+      <h4>YAKE + TF-IDF</h4>
+      <div class="role">Extracts the most distinctive keyphrases per document for the Tags directory — no model weights, pure statistics, instant and explainable.</div>
+      <div class="specs"><span>YAKE 2020</span><span>scikit-learn</span><span>per-doc</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- SEARCH PIPELINE -->
+<section id="search">
+  <div class="secthead reveal">
+    <span class="eyebrow">Pipeline 2 · Retrieval</span>
+    <h2>Hybrid search: two engines, fused, then re-judged.</h2>
+    <p class="sub">A keyword query alone misses meaning; a semantic query alone misses exact terms. DocuSync runs both in parallel, fuses them with Reciprocal Rank Fusion, then a cross-encoder re-judges the finalists. Type a query below and watch it happen.</p>
+  </div>
+
+  <div class="searchdemo reveal">
+    <div class="sbar">
+      <span style="font-size:20px">🔎</span>
+      <input id="qInput" placeholder="Try: how does HMGB1 affect cardiovascular disease?" />
+      <button id="runSearch">Search</button>
+    </div>
+    <div class="examples">
+      <span class="ex">cancer cell biology treatment</span>
+      <span class="ex">machine learning for diagnosis</span>
+      <span class="ex">renal disease in pregnancy</span>
+      <span class="ex">gene expression in yeast</span>
+    </div>
+
+    <div class="sflow">
+      <div class="sbranch" id="brKw" style="--cc:var(--amber)">
+        <div class="bh"><div class="bi">🔤</div> Keyword Engine</div>
+        <div class="bd">SQLite FTS5 · BM25 ranking · query expansion · top 50</div>
+        <div class="sresults" id="kwRes"></div>
+      </div>
+      <div class="sbranch" id="brSem" style="--cc:var(--cyan)">
+        <div class="bh"><div class="bi">🧲</div> Semantic Engine</div>
+        <div class="bd">BGE encode → ChromaDB HNSW cosine · nearest neighbours</div>
+        <div class="sresults" id="semRes"></div>
+      </div>
+    </div>
+
+    <div class="fusebox" id="fuseBox" style="--cc:var(--violet)">
+      <div class="fh"><span style="font-size:20px">⚗️</span> Reciprocal Rank Fusion <span style="font-size:12px;color:var(--ink3);font-weight:500;margin-left:auto">k = 60 · keyword ×2.0 · semantic ×1.0</span></div>
+      <div class="formula">score = <b>2.0</b>/(60 + rank<sub>kw</sub>) + <b>1.0</b>/(60 + rank<sub>sem</sub>)</div>
+    </div>
+
+    <div class="fusebox" id="rerankBox" style="--cc:var(--green);margin-top:18px">
+      <div class="fh"><span style="font-size:20px">🎯</span> Cross-Encoder Rerank → Final Results</div>
+      <div class="finalres" id="finalRes"></div>
+    </div>
+  </div>
+</section>
+
+<!-- TECH STACK -->
+<section id="stack">
+  <div class="secthead reveal">
+    <span class="eyebrow">Complete Tech Stack</span>
+    <h2>Everything under the hood.</h2>
+  </div>
+  <div class="tgrid">
+    <div class="tcat reveal" style="--cc:var(--blue)">
+      <div class="th"><div class="ti">🎨</div> Frontend</div>
+      <div class="row"><span class="rn">React</span><span class="rv">18 · SPA</span></div>
+      <div class="row"><span class="rn">Build tool</span><span class="rv">Vite 8 · Rolldown</span></div>
+      <div class="row"><span class="rn">Styling</span><span class="rv">Hand-tuned CSS</span></div>
+      <div class="row"><span class="rn">Icons</span><span class="rv">Tabler</span></div>
+    </div>
+    <div class="tcat reveal" style="--cc:var(--cyan)">
+      <div class="th"><div class="ti">⚙️</div> Backend</div>
+      <div class="row"><span class="rn">Framework</span><span class="rv">FastAPI</span></div>
+      <div class="row"><span class="rn">Server</span><span class="rv">Uvicorn ASGI</span></div>
+      <div class="row"><span class="rn">Language</span><span class="rv">Python 3.9</span></div>
+      <div class="row"><span class="rn">Concurrency</span><span class="rv">async + threads</span></div>
+    </div>
+    <div class="tcat reveal" style="--cc:var(--violet)">
+      <div class="th"><div class="ti">🧠</div> ML / Inference</div>
+      <div class="row"><span class="rn">Embeddings</span><span class="rv">sentence-transformers</span></div>
+      <div class="row"><span class="rn">Transformers</span><span class="rv">HuggingFace</span></div>
+      <div class="row"><span class="rn">Backend</span><span class="rv">PyTorch · CUDA</span></div>
+      <div class="row"><span class="rn">OCR</span><span class="rv">PaddleOCR · Tesseract</span></div>
+    </div>
+    <div class="tcat reveal" style="--cc:var(--green)">
+      <div class="th"><div class="ti">🗄️</div> Storage</div>
+      <div class="row"><span class="rn">Vectors</span><span class="rv">ChromaDB · HNSW</span></div>
+      <div class="row"><span class="rn">Full-text</span><span class="rv">SQLite FTS5</span></div>
+      <div class="row"><span class="rn">Tokenizer</span><span class="rv">porter unicode61</span></div>
+      <div class="row"><span class="rn">Mode</span><span class="rv">WAL</span></div>
+    </div>
+    <div class="tcat reveal" style="--cc:var(--amber)">
+      <div class="th"><div class="ti">🔧</div> Retrieval</div>
+      <div class="row"><span class="rn">Fusion</span><span class="rv">RRF (k=60)</span></div>
+      <div class="row"><span class="rn">Keyword</span><span class="rv">BM25</span></div>
+      <div class="row"><span class="rn">Semantic</span><span class="rv">cosine kNN</span></div>
+      <div class="row"><span class="rn">Rerank</span><span class="rv">cross-encoder</span></div>
+    </div>
+    <div class="tcat reveal" style="--cc:var(--pink)">
+      <div class="th"><div class="ti">🚀</div> Ops &amp; Deploy</div>
+      <div class="row"><span class="rn">Process mgr</span><span class="rv">systemd</span></div>
+      <div class="row"><span class="rn">Private net</span><span class="rv">Tailscale</span></div>
+      <div class="row"><span class="rn">Public tunnel</span><span class="rv">Cloudflare</span></div>
+      <div class="row"><span class="rn">GPU</span><span class="rv">RTX 4080</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- INFRA -->
+<section id="infra">
+  <div class="secthead reveal">
+    <span class="eyebrow">Deployment &amp; Reliability</span>
+    <h2>Built to stay up — and stay private.</h2>
+    <p class="sub">The whole platform runs as managed services on a single GPU machine. Everything auto-starts on boot in the correct order and auto-restarts on failure.</p>
+  </div>
+  <div class="infra">
+    <div class="ibox reveal" style="--cc:var(--green)">
+      <div class="ih"><div class="ico">🟢</div><div><h4>Always-On Services</h4><span>systemd</span></div></div>
+      <p>Three managed units: <b>Tailscale</b> (private mesh network), <b>DocuSync</b> (the FastAPI app), and <b>Cloudflare Tunnel</b> (public URL). Each restarts automatically if it ever crashes.</p>
+      <div class="iflags"><span>Restart=always</span><span>enabled on boot</span><span>BindsTo=docusync</span></div>
+    </div>
+    <div class="ibox reveal" style="--cc:var(--blue)">
+      <div class="ih"><div class="ico">🔐</div><div><h4>Safe Shutdown</h4><span>operator guard</span></div></div>
+      <p>The server can't be powered down by accident. A guarded <b>safe-shutdown</b> command requires the operator to type a confirmation phrase, then gracefully drains and stops every service before power-off.</p>
+      <div class="iflags"><span>confirm phrase</span><span>graceful drain</span><span>TimeoutStopSec=30</span></div>
+    </div>
+    <div class="ibox reveal" style="--cc:var(--violet)">
+      <div class="ih"><div class="ico">🎮</div><div><h4>GPU Acceleration</h4><span>NVIDIA RTX 4080</span></div></div>
+      <p>All six models auto-detect and run on CUDA. A semaphore serialises heavy inference so the GPU is never over-subscribed, keeping ingestion stable and search warm at ~90&nbsp;ms.</p>
+      <div class="iflags"><span>CUDA → MPS → CPU</span><span>1-at-a-time inference</span><span>~90ms search</span></div>
+    </div>
+    <div class="ibox reveal" style="--cc:var(--cyan)">
+      <div class="ih"><div class="ico">🌐</div><div><h4>Access Anywhere, Privately</h4><span>Tailscale + Cloudflare</span></div></div>
+      <p>Team members reach the platform over an encrypted Tailscale mesh by private IP, while a Cloudflare Tunnel can expose a shareable HTTPS link for demos — with documents never leaving your server.</p>
+      <div class="iflags"><span>encrypted mesh</span><span>HTTPS tunnel</span><span>zero data egress</span></div>
+    </div>
+  </div>
+
+  <div class="reveal" style="margin-top:50px">
+    <div style="font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);margin-bottom:8px">Boot sequence</div>
+    <div class="boot">
+      <div class="bstep"><div class="bnode"><div class="bd"></div>network online</div><div class="barrow">→</div></div>
+      <div class="bstep"><div class="bnode"><div class="bd"></div>tailscaled</div><div class="barrow">→</div></div>
+      <div class="bstep"><div class="bnode"><div class="bd"></div>docusync</div><div class="barrow">→</div></div>
+      <div class="bstep"><div class="bnode"><div class="bd"></div>cloudflared</div></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="reveal">
+    <div class="fbig">Your documents, <span class="grad">understood</span> — never uploaded to anyone.</div>
+    <div class="fsub">Private. Fast. Explainable. Running entirely on your own GPU.</div>
+    <div class="flink">◈ DocuSync · Local Document Intelligence Platform</div>
+    <div class="fcred">Interactive system walkthrough · every stage reflects the live production pipeline</div>
+  </div>
+</footer>
+
+<script>
+/* ============ DATA: ingestion stage details ============ */
+const STAGES = [
+  { c:'var(--blue)', ico:'📤', title:'Upload', what:'The user drags a file onto the dropzone or browses for it. The browser sends it to the backend as multipart/form-data. The API immediately stores the original, creates a database record marked "processing", and kicks off a background task — so the UI stays responsive while heavy work happens behind the scenes.',
+    points:['<b>Accepted:</b> PDF, DOCX, TXT, MD','<b>Non-blocking:</b> background async task','<b>Live progress</b> streamed back to the UI'],
+    model:'FastAPI UploadFile', meta:['multipart','background task','progress tracker'] },
+  { c:'var(--cyan)', ico:'📖', title:'Parse & OCR', what:'Text is extracted page by page. Native-text PDFs are read directly with PyMuPDF; DOCX paragraphs and tables via python-docx. If a page is a scanned image with no extractable text, it is rasterised and passed to an OCR ensemble (PaddleOCR with a Tesseract fallback) so even scans become searchable.',
+    points:['<b>PyMuPDF</b> for fast PDF text + tables','<b>OCR fallback</b> only when needed','<b>Per-page</b> extraction with progress callbacks'],
+    model:'PyMuPDF · PaddleOCR · Tesseract', meta:['page-by-page','table aware','scan fallback'] },
+  { c:'var(--violet)', ico:'🧠', title:'AI Analysis', what:'The heart of the pipeline. On the GPU (serialised by a semaphore so models never collide), four things are produced: an abstractive summary (DistilBART), a 4-dimension zero-shot classification (DeBERTa-v3 NLI), distinctive keyword tags (YAKE + TF-IDF), and key findings + entities via heuristics.',
+    points:['<b>Summary:</b> DistilBART-CNN-12-6','<b>Classify:</b> DeBERTa across Subject / Field / Doc Type / Methodology','<b>Tags:</b> YAKE keyphrases','<b>Serialised</b> on GPU via semaphore'],
+    model:'DeBERTa-v3-large · DistilBART', meta:['zero-shot','threshold 0.35','GPU semaphore'] },
+  { c:'var(--pink)', ico:'✂️', title:'Chunking', what:'Long documents are split into overlapping, sentence-boundary-aware passages of about 900 characters with a 2-sentence overlap, so context is never lost at the seams. Tables get their own row-grouped chunks. This is what makes precise passage-level retrieval possible.',
+    points:['<b>~900 chars</b> per chunk','<b>2-sentence overlap</b> preserves context','<b>Tables:</b> 15 rows/chunk with 2-row overlap','<b>Hard cap</b> on runaway long sentences'],
+    model:'Sentence-aware splitter', meta:['900 chars','2-sent overlap','table mode'] },
+  { c:'var(--amber)', ico:'🔢', title:'Embedding', what:'Each chunk is encoded by BGE into a 768-dimensional vector that captures its meaning. Any vectors that come out malformed (NaN/Inf) are filtered before storage. Identical text is cached so repeated content is never re-encoded.',
+    points:['<b>BGE-base-en-v1.5</b>, 768 dimensions','<b>NaN / Inf filtering</b> for safety','<b>Batch encoded</b> on GPU'],
+    model:'BAAI/bge-base-en-v1.5', meta:['768-dim','cosine space','batch GPU'] },
+  { c:'var(--green)', ico:'🗄️', title:'Index & Store', what:'The document is written to three places at once: vectors go into ChromaDB (HNSW index, cosine distance) for semantic search; full text goes into SQLite FTS5 (porter tokenizer) for keyword search; and all metadata — summary, tags, classifications, findings — goes into SQLite. The record is flipped to "completed".',
+    points:['<b>ChromaDB:</b> HNSW cosine vector index','<b>SQLite FTS5:</b> BM25 keyword index','<b>Metadata tables:</b> tags, classes, findings','Status → <b>completed</b>'],
+    model:'ChromaDB · SQLite FTS5', meta:['HNSW','FTS5 porter','WAL mode'] },
+];
+
+/* ============ ingestion drawer ============ */
+const nodes=[...document.querySelectorAll('.pnode')];
+const drawer=document.getElementById('ingestDrawer');
+const dc=document.getElementById('drawerContent');
+let openIdx=-1;
+function renderDrawer(i){
+  const s=STAGES[i];
+  document.documentElement.style.setProperty('--cc',s.c);
+  dc.style.setProperty('--cc',s.c);
+  dc.innerHTML=`
+    <div>
+      <h3><span class="dico" style="background:color-mix(in srgb,${s.c} 20%,transparent)">${s.ico}</span>${s.title}</h3>
+      <div class="what">${s.what}</div>
+      <ul>${s.points.map(p=>`<li>${p}</li>`).join('')}</ul>
+    </div>
+    <div class="dcard" style="--cc:${s.c}">
+      <div class="dk">Technology</div>
+      <div class="dmodel" style="color:${s.c}">${s.model}</div>
+      <div class="dmeta">${s.meta.map(m=>`<span>${m}</span>`).join('')}</div>
+    </div>`;
+}
+nodes.forEach(n=>{
+  n.addEventListener('click',()=>{
+    const i=+n.dataset.i;
+    nodes.forEach(x=>x.classList.remove('active'));
+    if(openIdx===i){drawer.classList.remove('open');openIdx=-1;return;}
+    n.classList.add('active');renderDrawer(i);drawer.classList.add('open');openIdx=i;
+    drawer.scrollIntoView({behavior:'smooth',block:'nearest'});
+  });
+});
+
+/* ============ play the pipeline ============ */
+let playing=false;
+document.getElementById('playIngest').addEventListener('click',function(){
+  if(playing)return;
+  playing=true;
+  const btn=document.getElementById('playIngest');
+  btn.innerHTML='<span class="ic">⏳</span> Running…';
+  btn.style.opacity='0.7';
+  drawer.classList.remove('open');openIdx=-1;
+  nodes.forEach(n=>n.classList.remove('active'));
+  // scroll pipeline into view first
+  document.getElementById('ingestPipe').scrollIntoView({behavior:'smooth',block:'center'});
+  let i=0;
+  function step(){
+    if(i>0) nodes[i-1].classList.remove('active');
+    if(i>=nodes.length){
+      // done — open last node detail
+      nodes[nodes.length-1].classList.add('active');
+      renderDrawer(nodes.length-1);
+      drawer.classList.add('open');
+      openIdx=nodes.length-1;
+      btn.innerHTML='<span class="ic">▶</span> Play again';
+      btn.style.opacity='1';
+      playing=false;
+      return;
+    }
+    const n=nodes[i];
+    n.classList.add('active');
+    // pulse the icon
+    const ico=n.querySelector('.pico');
+    if(ico) ico.animate(
+      [{transform:'scale(1.0)'},{transform:'scale(1.3) rotate(-8deg)'},{transform:'scale(1.0)'}],
+      {duration:500,easing:'cubic-bezier(.34,1.56,.64,1)'}
+    );
+    i++;
+    setTimeout(step, 700);
+  }
+  // wait for scroll then start
+  setTimeout(step, 600);
+});
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+
+/* ============ SEARCH demo ============ */
+const DOCS=[
+  {t:'High-mobility group box-1 & TLR4 in calcific valves',kw:['HMGB1','TLR4','cardiovascular','inflammatory'],sem:['cardiovascular','inflammation','calcification','valve disease']},
+  {t:'Outcome of pregnancy in women with renal disease',kw:['renal','pregnancy','creatinine','disease'],sem:['kidney','pregnancy','maternal','insufficiency']},
+  {t:'Targeting arginine metabolism to treat cancer',kw:['cancer','metabolism','arginine','tumor'],sem:['cancer','tumor','therapy','cell biology']},
+  {t:'RiboSys: quantitative RNA processing in yeast',kw:['RNA','yeast','gene','expression'],sem:['gene expression','molecular biology','transcription']},
+  {t:'Tumor-associated macrophages predict outcome',kw:['tumor','macrophage','clinical','cancer'],sem:['cancer','immunology','prognosis','cell']},
+  {t:'Genetic variation in Interleukin-28B & HCV',kw:['gene','interleukin','virus','HCV'],sem:['genetics','virology','immune response']},
+  {t:'Machine learning approaches for diagnosis',kw:['machine','learning','diagnosis','model'],sem:['AI','prediction','classification','medicine']},
+  {t:'Quantitative detection of Hepatitis C virus RNA',kw:['hepatitis','virus','RNA','detection'],sem:['virology','diagnostics','clinical']},
+];
+const qInput=document.getElementById('qInput');
+const kwRes=document.getElementById('kwRes'),semRes=document.getElementById('semRes'),finalRes=document.getElementById('finalRes');
+const brKw=document.getElementById('brKw'),brSem=document.getElementById('brSem'),fuseBox=document.getElementById('fuseBox'),rerankBox=document.getElementById('rerankBox');
+
+function scoreDocs(q){
+  const terms=q.toLowerCase().split(/\s+/).filter(Boolean);
+  const kw=DOCS.map(d=>{let s=0;terms.forEach(t=>d.kw.forEach(k=>{if(k.toLowerCase().includes(t)||t.includes(k.toLowerCase()))s+=2;}));return{d,s};}).filter(x=>x.s>0).sort((a,b)=>b.s-a.s).slice(0,4);
+  const sem=DOCS.map(d=>{let s=0;terms.forEach(t=>d.sem.forEach(k=>{if(k.toLowerCase().includes(t)||t.includes(k.toLowerCase()))s+=1.5;d.kw.forEach(()=>{});}));s+=Math.random()*0.6;return{d,s};}).filter(x=>x.s>0.4).sort((a,b)=>b.s-a.s).slice(0,4);
+  if(kw.length===0)kw.push(...DOCS.slice(0,3).map(d=>({d,s:1})));
+  if(sem.length===0)sem.push(...DOCS.slice(2,6).map(d=>({d,s:1})));
+  return{kw,sem};
+}
+async function runSearch(){
+  const q=qInput.value.trim()||qInput.placeholder;
+  kwRes.innerHTML='';semRes.innerHTML='';finalRes.innerHTML='';
+  brKw.classList.remove('lit');brSem.classList.remove('lit');fuseBox.classList.remove('lit');rerankBox.classList.remove('lit');
+  const{kw,sem}=scoreDocs(q);
+  await wait(180);
+  brKw.classList.add('lit');
+  kw.forEach((x,i)=>{const r=document.createElement('div');r.className='srow';r.style.animationDelay=(i*90)+'ms';r.innerHTML=`<span><span class="sr-rank">#${i+1}</span> ${x.d.t}</span>`;kwRes.appendChild(r);});
+  await wait(400);
+  brSem.classList.add('lit');
+  sem.forEach((x,i)=>{const r=document.createElement('div');r.className='srow';r.style.animationDelay=(i*90)+'ms';r.innerHTML=`<span><span class="sr-rank">#${i+1}</span> ${x.d.t}</span>`;semRes.appendChild(r);});
+  await wait(500);
+  fuseBox.classList.add('lit');
+  // RRF fuse
+  const k=60,fused={};
+  kw.forEach((x,i)=>{fused[x.d.t]=(fused[x.d.t]||0)+2.0/(k+i+1);});
+  sem.forEach((x,i)=>{fused[x.d.t]=(fused[x.d.t]||0)+1.0/(k+i+1);});
+  const ranked=Object.entries(fused).sort((a,b)=>b[1]-a[1]).slice(0,3);
+  await wait(600);
+  rerankBox.classList.add('lit');
+  ranked.forEach((x,i)=>{
+    const pct=(94-i*9-Math.random()*4).toFixed(0);
+    const r=document.createElement('div');r.className='fres';r.style.animationDelay=(i*140)+'ms';
+    r.innerHTML=`<div class="medal">#${i+1}</div><div><div class="ftit">${x[0]}</div><div class="fmeta">RRF ${x[1].toFixed(4)} · cross-encoder verified</div></div><div class="score">${pct}%</div>`;
+    finalRes.appendChild(r);
+  });
+}
+document.getElementById('runSearch').addEventListener('click',runSearch);
+qInput.addEventListener('keydown',e=>{if(e.key==='Enter')runSearch();});
+document.querySelectorAll('.ex').forEach(e=>e.addEventListener('click',()=>{qInput.value=e.textContent;runSearch();}));
+
+/* ============ reveal on scroll ============ */
+const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}}),{threshold:.08});
+document.querySelectorAll('.reveal').forEach(el=>{
+  // Only animate if not already in viewport (avoids iframe blank-page issue)
+  const r=el.getBoundingClientRect();
+  if(r.top>window.innerHeight){el.classList.add('will-reveal');}
+  io.observe(el);
+});
+
+/* ============ counters ============ */
+const cio=new IntersectionObserver(es=>es.forEach(e=>{
+  if(!e.isIntersecting)return;
+  const el=e.target,to=+el.dataset.to,suf=el.dataset.suf||'';let cur=0;const dur=1400,t0=performance.now();
+  (function tick(t){const p=Math.min((t-t0)/dur,1);const e2=1-Math.pow(1-p,3);el.textContent=Math.round(to*e2)+suf;if(p<1)requestAnimationFrame(tick);})(t0);
+  cio.unobserve(el);
+}),{threshold:.5});
+document.querySelectorAll('.stat .n').forEach(el=>cio.observe(el));
+
+/* ============ dot nav + topbar ============ */
+const secs=[...document.querySelectorAll('section')];
+const dots=[...document.querySelectorAll('.dotnav a')];
+const tb=document.getElementById('topbar');
+window.addEventListener('scroll',()=>{
+  tb.classList.toggle('solid',scrollY>60);
+  let cur=secs[0].id;
+  secs.forEach(s=>{if(scrollY>=s.offsetTop-window.innerHeight*0.4)cur=s.id;});
+  dots.forEach(d=>d.classList.toggle('on',d.getAttribute('href')==='#'+cur));
+},{passive:true});
+
+/* ============ particle background ============ */
+const cv=document.getElementById('bgCanvas'),cx=cv.getContext('2d');let W,H,pts;
+function rsz(){W=cv.width=innerWidth;H=cv.height=innerHeight;pts=Array.from({length:Math.min(70,Math.floor(W/22))},()=>({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.3,vy:(Math.random()-.5)*.3}));}
+rsz();addEventListener('resize',rsz);
+(function loop(){
+  cx.clearRect(0,0,W,H);
+  for(let i=0;i<pts.length;i++){const p=pts[i];p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>W)p.vx*=-1;if(p.y<0||p.y>H)p.vy*=-1;
+    for(let j=i+1;j<pts.length;j++){const q=pts[j],dx=p.x-q.x,dy=p.y-q.y,d=Math.hypot(dx,dy);if(d<130){cx.strokeStyle=`rgba(80,140,230,${.12*(1-d/130)})`;cx.lineWidth=1;cx.beginPath();cx.moveTo(p.x,p.y);cx.lineTo(q.x,q.y);cx.stroke();}}
+    cx.fillStyle='rgba(120,170,255,.5)';cx.beginPath();cx.arc(p.x,p.y,1.4,0,7);cx.fill();}
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
